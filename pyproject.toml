@@ -7,7 +7,7 @@ name = "dgb_qid"
 version = "0.0.1"
 description = "Quantum-secure successor to Digi-ID for passwordless authentication on DigiByte."
 authors = [
-    { name = "DarekDGB", email = "" }
+    { name = "DarekDGB" }
 ]
 readme = "README.md"
 requires-python = ">=3.10"
