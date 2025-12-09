@@ -1,48 +1,50 @@
-# 🔐 DigiByte Q‑ID  
-## **Quantum‑Ready Authentication Protocol with Hybrid Signatures, PQC Backends & Adamantine Integration**  
-### **Developer Preview v0.1 — Designed for Long‑Term Survivability**
+# 🔐 DigiByte Q-ID  
+## **Quantum-Ready Authentication Protocol with Hybrid Signatures, PQC Backends & Adamantine Integration**  
+### **Developer Preview v0.1 — Designed for Long-Term Survivability**
+
+> **Q-ID operates fully standalone, but can also integrate with the Adamantine Wallet and the DigiByte Quantum Shield to provide enhanced authentication telemetry, identity-level protection, and future PQC-ready wallet workflows.**
 
 ---
 
-Q‑ID is a **next‑generation authentication protocol** engineered as the evolutionary successor to Digi‑ID.  
+Q-ID is a **next-generation authentication protocol** engineered as the evolutionary successor to Digi-ID.  
 It is not a simple upgrade — it is a **complete redesign** around:
 
 - **Cryptographically signed authentication flows**  
-- **PQC‑ready signature backends (ML‑DSA, Falcon)**  
-- **Hybrid (dual‑mode) signature support**  
+- **PQC-ready signature backends (ML-DSA, Falcon)**  
+- **Hybrid (dual-mode) signature support**  
 - **Strict service binding & replay protection**  
 - **Modular architecture** for any wallet or service  
-- **Adamantine‑native integration**  
+- **Adamantine-native integration**  
 - **Guardian / Shield telemetry compatibility**  
-- **QR‑first, passwordless login**  
+- **QR-first, passwordless login**  
 - **Full test coverage & CI validation**
 
 This README is intentionally deep and technical — a full architectural brief for any core engineer reviewing the protocol.
 
-Q‑ID is built to withstand not only today’s threats…  
+Q-ID is built to withstand not only today’s threats…  
 but also **the next cryptographic era.**
 
 ---
 
-# ⭐️ 1. Why Q‑ID Exists  
+# ⭐️ 1. Why Q-ID Exists  
 
-Legacy Digi‑ID is elegant — but limited:
+Legacy Digi-ID is elegant — but limited:
 
 - ❌ No signature on login responses  
 - ❌ No PQC migration path  
 - ❌ No hybrid crypto  
-- ❌ No server‑side verification standard  
+- ❌ No server-side verification standard  
 - ❌ No strict service binding  
 - ❌ No tamper detection  
 - ❌ No nonce replay protection rules  
 
-Q‑ID fixes this by introducing a **fully signed, verifiable authentication model** with a flexible cryptographic backend designed for a world where **quantum computers become real adversaries**.
+Q-ID fixes this by introducing a **fully signed, verifiable authentication model** with a flexible cryptographic backend designed for a world where **quantum computers become real adversaries**.
 
-Q‑ID integrates cleanly with Adamantine and the DigiByte Quantum Shield roadmap.
+Q-ID integrates cleanly with Adamantine and the DigiByte Quantum Shield roadmap.
 
 ---
 
-# ⭐️ 2. High‑Level Architecture
+# ⭐️ 2. High-Level Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -61,7 +63,7 @@ Q‑ID integrates cleanly with Adamantine and the DigiByte Quantum Shield roadma
 └─────────────────────────────────────────────┘
 ```
 
-Q‑ID is composed of four coherent layers:
+Q-ID is composed of four coherent layers:
 
 ```
 qid/
@@ -73,9 +75,9 @@ qid/
 
 ---
 
-# ⭐️ 3. Cryptographic Layer (PQC‑Ready)
+# ⭐️ 3. Cryptographic Layer (PQC-Ready)
 
-Q‑ID ships with a **pluggable crypto backend system**.  
+Q-ID ships with a **pluggable crypto backend system**.  
 Every keypair, signature, and verification step goes through a backend chosen by algorithm identifier:
 
 | Algorithm Name           | Purpose | Status |
@@ -83,38 +85,32 @@ Every keypair, signature, and verification step goes through a backend chosen by
 | `dev-hmac-sha256`       | Development / CI / tests | ✔ Stable |
 | `pqc-ml-dsa`            | PQC placeholder backend | ✔ Implemented |
 | `pqc-falcon`            | PQC placeholder backend | ✔ Implemented |
-| `hybrid-dev-ml-dsa`     | Dual‑mode hybrid backend | ✔ Implemented |
+| `hybrid-dev-ml-dsa`     | Dual-mode hybrid backend | ✔ Implemented |
 
-### ✔ Backends are drop‑in replaceable  
-Real Falcon / ML‑DSA implementations can replace the stubs without changing the API.
+### ✔ Backends are drop-in replaceable  
+Real Falcon / ML-DSA implementations can replace the stubs without changing the API.
 
 ### ✔ Hybrid backend  
-Simulates a “two‑phase” signature:
+Simulates a “two-phase” signature:
 
-```
+```text
 sig = SHA256_MAC(secret_part1) + SHA512_MAC(secret_part2)
 ```
 
-Meaning the verifier requires **both halves** to match — providing a conceptual hybrid model ready for real implementations.
-
 ### ✔ Canonical JSON signing  
-All signatures operate on canonical, whitespace‑free JSON bytes:
+All signatures operate on canonical, whitespace-free JSON bytes:
 
-```
+```python
 json.dumps(..., sort_keys=True, separators=(",", ":"))
 ```
 
-This ensures:
-
-- deterministic signature inputs  
-- cross‑language compatibility  
-- long‑term archival stability  
+This ensures deterministic multi-platform compatibility.
 
 ---
 
-# ⭐️ 4. Protocol Layer (Q‑ID Core)
+# ⭐️ 4. Protocol Layer (Q-ID Core)
 
-The Q‑ID protocol currently supports:
+The Q-ID protocol currently supports:
 
 ### ✔ Login Requests (QR → Wallet)
 - service ID  
@@ -137,27 +133,27 @@ Everything is strictly typed, canonicalized, and covered by tests.
 
 # ⭐️ 5. Adamantine Wallet Integration (Full Support)
 
-Q‑ID has **first‑class integration** with Adamantine:
+Q-ID has **first-class integration** with Adamantine:
 
-```
+```text
 qid.integration.adamantine
 ```
 
 Provides:
 
-- wallet‑side helpers to build signed responses  
-- server‑side helpers to verify them  
+- wallet-side helpers to build signed responses  
+- server-side helpers to verify them  
 - strict validation of service identity & callback URL  
 - PQC/hybrid keypair support  
-- compatibility with Guardian / QWG / Shield Airlock telemetry  
+- compatibility with Guardian / QWG / Shield telemetry  
 
 In effect:
 
-**Adamantine can become the first fully quantum‑ready authentication wallet in DigiByte history.**
+**Adamantine can become the first fully quantum-ready authentication wallet in DigiByte history.**
 
 ---
 
-# ⭐️ 6. Server‑Side Verification
+# ⭐️ 6. Server-Side Verification
 
 Services verify login responses via:
 
@@ -189,7 +185,7 @@ Docs: `docs/qid-example-server.md`
 
 Located in:
 
-```
+```text
 examples/mobile/qr_scanner_demo.md
 ```
 
@@ -202,26 +198,26 @@ Includes:
 - signature preparation  
 - network POST examples  
 
-This demonstrates exactly how real wallets should integrate Q‑ID.
+This demonstrates exactly how real wallets should integrate Q-ID.
 
 ---
 
 # ⭐️ 8. Complete Example Server
 
-Run a working Q‑ID service backend:
+Run a working Q-ID service backend:
 
-```
+```bash
 python examples/example_server.py
 ```
 
 Endpoints:
 
-```
+```text
 GET  /login  → generate qid:// URI
 POST /verify → validate signed response
 ```
 
-Self‑contained, readable, and acts as a demo and reference.
+Self-contained, readable, and acts as a demo and reference.
 
 ---
 
@@ -244,7 +240,7 @@ All tests pass → CI is fully green.
 
 Full professional threat model located in:
 
-```
+```text
 docs/qid-threat-model.md
 ```
 
@@ -257,7 +253,7 @@ Covers:
 - service impersonation  
 - device compromise  
 - downgrade attacks  
-- cross‑service confusion  
+- cross-service confusion  
 - Guardian/Shield integration points  
 
 Exactly the level of detail required for serious protocol adoption.
@@ -266,19 +262,19 @@ Exactly the level of detail required for serious protocol adoption.
 
 # ⭐️ 11. Migration Path & Future Work
 
-Q‑ID is intentionally designed for:
+Q-ID is intentionally designed for:
 
 ### ✔ Seamless PQC migration  
 Algorithm identifiers exist today, full implementations can replace stubs without breaking protocol compatibility.
 
 ### ✔ Hybrid transition  
-Allows services to require dual‑signature mode for higher assurance.
+Allows services to require dual-signature mode for higher assurance.
 
 ### ✔ Wallet ecosystem expansion  
 Android/iOS reference scanning logic is included.
 
 ### ✔ Guardian / Shield synergy  
-Q‑ID events are perfect telemetry inputs for:
+Q-ID events are perfect telemetry inputs for:
 
 - Sentinel  
 - DQSN  
@@ -286,30 +282,45 @@ Q‑ID events are perfect telemetry inputs for:
 - QWG  
 - Adaptive Core  
 
-Enabling multi‑layer anomaly detection for authentication.
+Enabling multi-layer anomaly detection for authentication.
 
 ---
 
-# ⭐️ 12. Summary — What Q‑ID Achieves
+# ⭐️ 12. Contributing
+
+Contributions are welcome, but Q-ID is a **security-critical protocol** and must remain:
+
+- deterministic  
+- fully tested  
+- protocol-clean  
+- PQC-ready  
+- wallet-agnostic (while integrating cleanly with Adamantine and the Shield)
+
+Please read **`CONTRIBUTING.md`** before opening a PR.  
+Any change that weakens security, breaks determinism, or mixes wallet logic into the protocol layer will be rejected.
+
+---
+
+# ⭐️ 13. Summary — What Q-ID Achieves
 
 ### ✔ Cryptographically signed authentication  
-### ✔ PQC‑ready architecture  
+### ✔ PQC-ready architecture  
 ### ✔ Hybrid signature support  
 ### ✔ Strict service binding  
-### ✔ QR‑first, mobile‑friendly workflow  
-### ✔ Adamantine‑ready  
+### ✔ QR-first, mobile-friendly workflow  
+### ✔ Adamantine-ready  
 ### ✔ Fully documented  
 ### ✔ Fully tested  
 ### ✔ CI validated  
-### ✔ Modular, production‑oriented design  
+### ✔ Modular, production-oriented design  
 
-Q‑ID is engineered not only for **today’s DigiByte ecosystem**,  
+Q-ID is engineered not only for **today’s DigiByte ecosystem**,  
 but for **the cryptographic landscape 10–20 years from now**.
 
 Darek built this with a vision —  
-and the protocol is now ready for deeper community review and next‑stage development.
+and the protocol is now ready for deeper community review and next-stage development.
 
 ---
 
 **MIT Licensed — @Darek_DGB**  
-Quantum‑ready. Future‑proof. DigiByte‑strong.
+Quantum-ready. Future-proof. DigiByte-strong.
