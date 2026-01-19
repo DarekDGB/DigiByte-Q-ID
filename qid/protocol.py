@@ -2,33 +2,18 @@
 High-level DigiByte Q-ID protocol helpers.
 
 This module provides helpers for:
-
-- Login request:
-    - build_login_request_payload(...)
-    - build_login_request_uri(...)
-    - parse_login_request_uri(...)
-
-- Registration request:
-    - build_registration_payload(...)
-    - build_registration_uri(...)
-    - parse_registration_uri(...)
-
-- Signed login response:
-    - build_login_response_payload(...)
-    - sign_login_response(...)
-    - verify_login_response(...)
-    - server_verify_login_response(...)
-
-These helpers focus on shaping JSON payloads and wrapping/unwrapping
-them into simple qid:// URIs. Cryptography, signatures, storage and
-policy checks will be added later.
+- login request payloads + qid:// login URIs
+- registration payloads + qid:// register URIs
+- signing/verification wrappers for protocol payloads
+- SignedMessage wrapper used by hybrid-container integration tests
 """
 
 from __future__ import annotations
 
 import base64
 import json
-from typing import Any, Dict
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 from .crypto import QIDKeyPair, sign_payload, verify_payload
 from .qr_payloads import decode_login_request, encode_login_request
@@ -51,6 +36,54 @@ def _b64url_decode(token: str) -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# SignedMessage wrapper (used by hybrid container tests)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SignedMessage:
+    payload: Dict[str, Any]
+    signature: str
+    algorithm: str
+    hybrid_container_b64: Optional[str] = None
+
+
+def sign_message(
+    payload: Dict[str, Any],
+    keypair: QIDKeyPair,
+    *,
+    hybrid_container_b64: Optional[str] = None,
+) -> SignedMessage:
+    """
+    Sign an arbitrary protocol payload and return a SignedMessage.
+
+    hybrid_container_b64 is optional for stub/hmac modes; it becomes required
+    by crypto.py when a real hybrid backend is selected.
+    """
+    sig = sign_payload(payload, keypair, hybrid_container_b64=hybrid_container_b64)
+    return SignedMessage(
+        payload=payload,
+        signature=sig,
+        algorithm=keypair.algorithm,
+        hybrid_container_b64=hybrid_container_b64,
+    )
+
+
+def verify_message(msg: SignedMessage, keypair: QIDKeyPair) -> bool:
+    """
+    Verify a SignedMessage.
+
+    Fail-closed: any mismatch / missing required container returns False.
+    """
+    return verify_payload(
+        msg.payload,
+        msg.signature,
+        keypair,
+        hybrid_container_b64=msg.hybrid_container_b64,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Login helpers
 # ---------------------------------------------------------------------------
 
@@ -63,9 +96,6 @@ def build_login_request_payload(
 ) -> Dict[str, Any]:
     """
     Build a minimal Q-ID login request payload.
-
-    This does *not* handle crypto or signatures. It only shapes the JSON
-    that will be embedded into the qid:// URI.
     """
     return {
         "type": "login_request",
@@ -104,13 +134,9 @@ def build_login_response_payload(
 ) -> Dict[str, Any]:
     """
     Build a Q-ID login response payload that a wallet would sign.
-
-    Mirrors the service_id and nonce from the login request and attaches the
-    wallet's address + public key information.
     """
     service_id = request_payload.get("service_id")
     nonce = request_payload.get("nonce")
-
     if not service_id or not nonce:
         raise ValueError("Login request payload must contain 'service_id' and 'nonce'.")
 
@@ -130,9 +156,6 @@ def build_login_response_payload(
 def sign_login_response(payload: Dict[str, Any], keypair: QIDKeyPair) -> str:
     """
     Sign a login response payload.
-
-    Delegates to qid.crypto.sign_payload(). Production will swap in real
-    ML-DSA/Falcon/hybrid behind the same API.
     """
     return sign_payload(payload, keypair)
 
@@ -140,9 +163,6 @@ def sign_login_response(payload: Dict[str, Any], keypair: QIDKeyPair) -> str:
 def verify_login_response(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair) -> bool:
     """
     Verify a signed login response payload.
-
-    NOTE: In dev backend, verification uses the same symmetric key.
-    Real PQC will verify with public key only.
     """
     return verify_payload(payload, signature, keypair)
 
@@ -155,20 +175,13 @@ def server_verify_login_response(
 ) -> bool:
     """
     Reference server-side verification flow for a signed login response.
-
-    Performs:
-    - shape check (type)
-    - service_id/nonce match request<->response
-    - cryptographic verification
     """
     if response_payload.get("type") != "login_response":
         return False
-
     if response_payload.get("service_id") != request_payload.get("service_id"):
         return False
     if response_payload.get("nonce") != request_payload.get("nonce"):
         return False
-
     return verify_login_response(response_payload, signature, keypair)
 
 
@@ -222,8 +235,8 @@ def parse_registration_uri(uri: str) -> Dict[str, Any]:
     rest = uri[len(prefix) :]
     if "?" not in rest:
         raise ValueError("Q-ID URI missing query part.")
-    action, query = rest.split("?", 1)
 
+    action, query = rest.split("?", 1)
     if action != "register":
         raise ValueError(f"Unsupported Q-ID action for registration: {action!r}")
 
@@ -235,7 +248,6 @@ def parse_registration_uri(uri: str) -> Dict[str, Any]:
         if key == "d":
             token = value
             break
-
     if token is None:
         raise ValueError("Q-ID registration URI missing 'd' parameter.")
 
@@ -249,16 +261,3 @@ def parse_registration_uri(uri: str) -> Dict[str, Any]:
         raise ValueError("Q-ID registration payload must be a JSON object.")
 
     return payload
-
-
-# ---------------------------------------------------------------------------
-# Placeholders for future full protocol flows
-# ---------------------------------------------------------------------------
-
-
-def register_identity(request: Dict[str, Any]) -> Dict[str, Any]:
-    return {"status": "todo", "detail": "Q-ID registration not implemented yet."}
-
-
-def login(request: Dict[str, Any]) -> Dict[str, Any]:
-    return {"status": "todo", "detail": "Q-ID login not implemented yet."}
