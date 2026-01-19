@@ -25,3 +25,15 @@ def test_login_request_roundtrip() -> None:
     assert decoded["nonce"] == "abc123"
     assert decoded["callback_url"] == "https://example.com/qid"
     assert decoded["version"] == "1"
+
+import pytest
+from qid.protocol import build_login_response_payload
+
+
+def test_login_response_payload_requires_service_id_and_nonce() -> None:
+    with pytest.raises(ValueError):
+        build_login_response_payload(
+            request_payload={"type": "login_request"},
+            address="dgb1q...",
+            pubkey="pub",
+        )
