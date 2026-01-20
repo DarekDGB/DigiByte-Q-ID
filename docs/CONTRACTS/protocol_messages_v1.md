@@ -1,3 +1,8 @@
+<!--
+MIT License
+Copyright (c) 2025 DarekDGB
+-->
+
 # Q-ID Protocol Message Shapes v1
 
 Author: DarekDGB  
@@ -68,9 +73,9 @@ Required fields:
 ```
 
 ## Rejection Rules
-- Missing required field → reject
-- Unknown `type` → reject
-- Version mismatch → reject
+- Missing required field â reject
+- Unknown `type` â reject
+- Version mismatch â reject
 
 ## Security Notes
 - No implicit defaults
