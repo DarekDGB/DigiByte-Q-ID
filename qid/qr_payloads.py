@@ -11,34 +11,39 @@ integrations.
 
 Login URI format:
     qid://login?d=<base64url(JSON)>
-
-Decoded JSON object (login request):
-{
-  "type": "login_request",
-  "service_id": "example.com",
-  "nonce": "random-unique-string",
-  "callback_url": "https://example.com/qid/callback",
-  "version": "1"
-}
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from .uri_scheme import decode_login_request as decode_login_request
-from .uri_scheme import encode_login_request as encode_login_request
+from .uri_scheme import (
+    encode_login_request,
+    decode_login_request,
+)
 
 
-def encode_login_request_uri(payload: Dict[str, Any]) -> str:
+def build_qr_payload(payload: Dict[str, Any]) -> str:
     """
-    Backwards compatible wrapper (older code used *_uri suffix).
+    Back-compat generic builder used by older tests.
+    For now this is equivalent to encoding a login request.
     """
     return encode_login_request(payload)
 
 
+def parse_qr_payload(uri: str) -> Dict[str, Any]:
+    """
+    Back-compat generic parser used by older tests.
+    For now this is equivalent to decoding a login request URI.
+    """
+    return decode_login_request(uri)
+
+
+def encode_login_request_uri(payload: Dict[str, Any]) -> str:
+    """Backwards compatible wrapper (older code used *_uri suffix)."""
+    return encode_login_request(payload)
+
+
 def decode_login_request_uri(uri: str) -> Dict[str, Any]:
-    """
-    Backwards compatible wrapper (older code used *_uri suffix).
-    """
+    """Backwards compatible wrapper (older code used *_uri suffix)."""
     return decode_login_request(uri)
