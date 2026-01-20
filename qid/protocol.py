@@ -6,7 +6,7 @@ Provides helpers for:
 - login responses + signing/verification flows
 - registration payloads + qid:// register URIs
 - SignedMessage wrapper used by tests
-- register_identity() convenience wrapper (expected by tests)
+- register_identity() + login() convenience wrappers (expected by tests)
 """
 
 from __future__ import annotations
@@ -71,9 +71,7 @@ def sign_message(
 
 
 def verify_message(msg: SignedMessage, keypair: QIDKeyPair) -> bool:
-    """
-    Verify a SignedMessage. Fail-closed on any mismatch.
-    """
+    """Verify a SignedMessage. Fail-closed on any mismatch."""
     return verify_payload(
         msg.payload,
         msg.signature,
@@ -108,11 +106,6 @@ def build_login_request_uri(payload: Dict[str, Any]) -> str:
 
 def parse_login_request_uri(uri: str) -> Dict[str, Any]:
     return decode_login_request(uri)
-
-
-# ---------------------------------------------------------------------------
-# Login response helpers
-# ---------------------------------------------------------------------------
 
 
 def build_login_response_payload(
@@ -161,6 +154,30 @@ def server_verify_login_response(
     if response_payload.get("nonce") != request_payload.get("nonce"):
         return False
     return verify_login_response(response_payload, signature, keypair)
+
+
+def login(
+    service_id: str,
+    callback_url: str,
+    nonce: str,
+    *,
+    address: str,
+    pubkey: str,
+    keypair: QIDKeyPair,
+    version: str = "1",
+    key_id: str | None = None,
+    hybrid_container_b64: Optional[str] = None,
+) -> SignedMessage:
+    """
+    Convenience wrapper expected by tests.
+
+    - Builds a login_request payload (for context / nonce binding)
+    - Builds a login_response payload
+    - Signs the response and returns SignedMessage
+    """
+    req = build_login_request_payload(service_id=service_id, nonce=nonce, callback_url=callback_url, version=version)
+    resp = build_login_response_payload(req, address=address, pubkey=pubkey, key_id=key_id, version=version)
+    return sign_message(resp, keypair, hybrid_container_b64=hybrid_container_b64)
 
 
 # ---------------------------------------------------------------------------
