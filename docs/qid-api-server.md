@@ -1,258 +1,152 @@
-# DigiByte Q-ID — Reference API Server (Skeleton v0.1)
+<!--
+MIT License
+Copyright (c) 2025 DarekDGB
+-->
 
-Status: **skeleton – login + registration verification**
+# DigiByte Q-ID — API Server Notes (Non-Normative)
 
-This document sketches a simple HTTP/JSON API that DigiByte-enabled
-services can use to verify Q-ID registration and login responses.
+> **Status:** Developer guidance  
+> **Normative rules live in `docs/CONTRACTS/`.**  
+> If this document conflicts with a contract, **the contract wins**.
 
-The goal is to keep integration easy for backend developers, while
-remaining compatible with future upgrades (PQC, Guardian, Shield, etc.).
-
----
-
-## 1. General Principles
-
-- All endpoints are served over **HTTPS**.
-- All requests and responses use `application/json`.
-- Services are free to adapt field names internally, but SHOULD keep the
-  wire format consistent with this document to remain compatible with
-  reference tooling.
-
-This document does **not** yet define signature formats. For now,
-`signature` fields are treated as opaque strings that the verifier
-passes to a crypto backend.
+This document provides **implementation notes** for services that expose
+Q-ID login and registration endpoints. It is **not** a protocol specification.
 
 ---
 
-## 2. Registration Flow (High Level)
+## 1. Purpose of an API server
 
-1. Service generates a **registration request payload**:
+A Q-ID API server typically:
+- issues **login requests**
+- verifies **signed login responses**
+- accepts **registration payloads**
+- enforces service-specific policy (outside Q-ID scope)
 
-   ```jsonc
-   {
-     "type": "registration",
-     "service_id": "example.com",
-     "address": "dgb1qxyz123example",
-     "pubkey": "EXAMPLEPUBKEY",
-     "nonce": "abcdef123456",
-     "callback_url": "https://example.com/qid/register",
-     "version": "1"
-   }
-   ```
+Q-ID itself does **not** define:
+- user databases
+- session handling
+- authorization logic
+- account recovery
 
-2. Service encodes it into a Q-ID URI:
-
-   ```text
-   qid://register?d=<base64url(JSON)>
-   ```
-
-3. Wallet scans QR / opens deeplink, asks the user to confirm.
-
-4. Wallet builds a **registration response** JSON and POSTs it to the
-   service’s `callback_url`.
-
-5. Service forwards the payload to its local or remote **Q-ID verifier**
-   API (described below), which performs all checks.
+Those concerns remain application-specific.
 
 ---
 
-## 3. Endpoint: Verify Registration
+## 2. Login flow (server perspective)
 
-### 3.1 URL
+### Step 1: Issue login request
 
-```text
-POST /qid/register/verify
-```
+The server:
+1. Generates a nonce
+2. Builds a login request payload
+3. Encodes it as a `qid://login` URI
+4. Presents it to the client (QR, deep link, etc.)
 
-### 3.2 Request Body (v0.1 draft)
-
-```jsonc
-{
-  "request": {
-    "type": "registration",
-    "service_id": "example.com",
-    "address": "dgb1qxyz123example",
-    "pubkey": "EXAMPLEPUBKEY",
-    "nonce": "abcdef123456",
-    "callback_url": "https://example.com/qid/register",
-    "version": "1"
-  },
-  "response": {
-    "identity_id": "qid:example-user-123",
-    "address": "dgb1qxyz123example",
-    "pubkey": "EXAMPLEPUBKEY",
-    "key_algorithm": "secp256k1",
-    "signature": "BASE64_SIGNATURE",
-    "signed_at": "2025-01-01T12:34:56Z"
-  },
-  "context": {
-    "client_ip": "203.0.113.10",
-    "user_agent": "ExampleWallet/1.0",
-    "device_id": "device-abc",
-    "request_received_at": "2025-01-01T12:34:56Z"
-  }
-}
-```
-
-- `request` – original registration payload that was encoded inside the
-  Q-ID URI.
-- `response` – data returned by the wallet. Exact fields may evolve
-  as cryptography and device-binding details are specified.
-- `context` – optional metadata that the service or API server may use
-  for logging and risk analysis.
-
-### 3.3 Response Body (v0.1 draft)
-
-```jsonc
-{
-  "ok": true,
-  "reason": "registration_accepted",
-  "identity_id": "qid:example-user-123",
-  "credential_id": "cred-xyz",
-  "level": 1,
-  "warnings": []
-}
-```
-
-Possible values:
-
-- `ok` – boolean, true if registration is accepted.
-- `reason` – short machine-readable string (e.g. `registration_accepted`,
-  `invalid_signature`, `nonce_mismatch`).
-- `identity_id` – internal identifier for the Q-ID identity.
-- `credential_id` – identifier for the created binding between identity
-  and service.
-- `level` – assurance level (1 = basic; higher = stronger verification).
-- `warnings` – list of non-fatal strings providing extra context.
-
-In case of hard failures, `ok` is `false` and `reason` explains why.
+Helpers:
+- `build_login_request_payload`
+- `encode_login_request_uri`
 
 ---
 
-## 4. Login Flow (High Level)
+### Step 2: Receive login response
 
-1. Service generates a **login request payload**:
+The client returns:
+- a signed login response payload
+- a signature (Crypto Envelope v1)
+- optional hybrid container (HYBRID only)
 
-   ```jsonc
-   {
-     "type": "login_request",
-     "service_id": "example.com",
-     "nonce": "random-unique-string",
-     "callback_url": "https://example.com/qid/callback",
-     "version": "1"
-   }
-   ```
+The server must:
+- parse the response
+- verify signature
+- verify service_id and nonce match the original request
 
-2. Service encodes it into:
+Helpers:
+- `server_verify_login_response`
 
-   ```text
-   qid://login?d=<base64url(JSON)>
-   ```
-
-3. Wallet scans QR / opens deeplink, locates the existing credential for
-   this `service_id`, asks the user to approve.
-
-4. Wallet builds a **login response** and POSTs it to `callback_url`.
-
-5. Service forwards the payload to `/qid/login/verify`.
+Any mismatch ⇒ **reject**.
 
 ---
 
-## 5. Endpoint: Verify Login
+## 3. Registration flow (server perspective)
 
-### 5.1 URL
+Registration is a **one-time association** between:
+- a DigiByte address
+- a public key
+- a service identifier
 
-```text
-POST /qid/login/verify
-```
+The server:
+1. issues a registration request (out of band or via QR)
+2. receives a signed registration payload
+3. verifies signature
+4. stores association according to its own rules
 
-### 5.2 Request Body (v0.1 draft)
-
-```jsonc
-{
-  "request": {
-    "type": "login_request",
-    "service_id": "example.com",
-    "nonce": "random-unique-string",
-    "callback_url": "https://example.com/qid/callback",
-    "version": "1"
-  },
-  "response": {
-    "identity_id": "qid:example-user-123",
-    "credential_id": "cred-xyz",
-    "address": "dgb1qxyz123example",
-    "key_id": "key-1",
-    "signature": "BASE64_SIGNATURE",
-    "signed_at": "2025-01-01T12:34:56Z"
-  },
-  "context": {
-    "client_ip": "203.0.113.10",
-    "user_agent": "ExampleWallet/1.0",
-    "device_id": "device-abc",
-    "request_received_at": "2025-01-01T12:34:56Z"
-  }
-}
-```
-
-### 5.3 Response Body (v0.1 draft)
-
-```jsonc
-{
-  "ok": true,
-  "reason": "login_accepted",
-  "identity_id": "qid:example-user-123",
-  "credential_id": "cred-xyz",
-  "level": 1,
-  "session": {
-    "session_id": "sess-123",
-    "expires_at": "2025-01-01T14:34:56Z"
-  },
-  "warnings": []
-}
-```
-
-The verifier is responsible for:
-
-- checking that `request.service_id` matches the expected service,
-- validating `nonce` (not reused, not expired),
-- validating signatures (once signature formats are specified),
-- enforcing policy decisions (assurance level, device trust, etc.).
+Q-ID does **not** define:
+- how keys are rotated
+- how identities are revoked
+- how duplicates are resolved
 
 ---
 
-## 6. Error Handling
+## 4. Cryptography expectations
 
-On protocol errors (invalid JSON, malformed fields), the API server
-SHOULD return HTTP 400 with a body like:
+Servers must be aware of backend mode:
 
-```jsonc
-{
-  "ok": false,
-  "reason": "invalid_request",
-  "details": "Missing field: response.signature"
-}
-```
+### Stub mode (default)
+- Deterministic signatures
+- Suitable for development and CI
+- **Not PQ-secure**
 
-On internal errors (database down, unexpected exception), the API server
-SHOULD return HTTP 500 with:
+### Real backend (`liboqs`)
+- Enforced PQC algorithms
+- No silent fallback
+- Hybrid requires explicit container
 
-```jsonc
-{
-  "ok": false,
-  "reason": "internal_error"
-}
-```
-
-`details` MAY be omitted or reduced in production for security reasons.
+Servers may choose to:
+- require `liboqs` mode
+- accept stub mode for development only
 
 ---
 
-## 7. Future Work
+## 5. Error handling (important)
 
-Future versions of this document will:
+Server implementations should:
+- treat any verification failure as authentication failure
+- never attempt partial acceptance
+- log failures for audit (without leaking sensitive data)
 
-- Specify exact signature algorithms and proof formats.
-- Define how PQC and hybrid keys are represented.
-- Link responses more tightly to the `QIDIdentity`, `QIDKey`,
-  `QIDCredential` models.
-- Add examples of integrating Guardian/Shield risk scores into responses.
+Fail-closed behavior is mandatory.
+
+---
+
+## 6. Security boundaries
+
+Q-ID guarantees:
+- message authenticity (if verification succeeds)
+- payload integrity
+- explicit algorithm binding
+
+Q-ID does **not** guarantee:
+- user intent
+- device security
+- malware resistance
+- account ownership semantics
+
+Those are outside protocol scope.
+
+---
+
+## 7. Example server
+
+See:
+- `examples/example_server.py`
+
+This example:
+- uses DEV backend
+- demonstrates verification logic
+- is **not production-ready**
+
+---
+
+## License
+
+MIT — Copyright (c) 2025 **DarekDGB**
