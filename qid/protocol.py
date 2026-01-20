@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from .crypto import QIDKeyPair, sign_payload, verify_payload
-from .errors import QIDError
 from .uri_scheme import (
     decode_login_request_uri,
     decode_registration_uri,
@@ -53,14 +52,14 @@ def sign_message(
     Sign an arbitrary protocol payload and return a SignedMessage.
 
     Fail-closed policy:
-    - For expected validation/config errors (ValueError/TypeError/QIDError),
+    - For expected validation/config errors (ValueError/TypeError),
       do not raise from the protocol layer. Return an empty signature so
       verification fails closed.
     - Do NOT blanket-catch all exceptions; programmer bugs must surface.
     """
     try:
         sig = sign_payload(payload, keypair, hybrid_container_b64=hybrid_container_b64)
-    except (ValueError, TypeError, QIDError):
+    except (ValueError, TypeError):
         sig = ""  # fail-closed without crashing protocol layer
 
     return SignedMessage(
@@ -192,7 +191,7 @@ def login(
     """
     Convenience wrapper: build a login_request and signed login_response.
 
-    This is strict-only (no legacy placeholder mode).
+    Strict-only (no legacy placeholder mode).
     """
     req = build_login_request_payload(
         service_id=service_id,
@@ -256,7 +255,7 @@ def register_identity(
     """
     Convenience wrapper: build a registration payload and sign it.
 
-    This is strict-only (no legacy placeholder mode).
+    Strict-only (no legacy placeholder mode).
     """
     payload = build_registration_payload(
         service_id=service_id,
