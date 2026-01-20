@@ -2,6 +2,7 @@ import os
 import pytest
 
 from qid.crypto import ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO, generate_keypair, sign_payload, verify_payload
+from qid.hybrid_key_container import build_container, encode_container
 
 
 def _has_oqs() -> bool:
@@ -14,8 +15,9 @@ def _has_oqs() -> bool:
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_real_liboqs_mldsa_roundtrip() -> None:
+def test_real_liboqs_ml_dsa_roundtrip() -> None:
     os.environ["QID_PQC_BACKEND"] = "liboqs"
+
     kp = generate_keypair(ML_DSA_ALGO)
     payload = {"x": 1}
     sig = sign_payload(payload, kp)
@@ -26,6 +28,7 @@ def test_real_liboqs_mldsa_roundtrip() -> None:
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
 def test_real_liboqs_falcon_roundtrip() -> None:
     os.environ["QID_PQC_BACKEND"] = "liboqs"
+
     kp = generate_keypair(FALCON_ALGO)
     payload = {"x": 2}
     sig = sign_payload(payload, kp)
@@ -34,9 +37,26 @@ def test_real_liboqs_falcon_roundtrip() -> None:
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_real_liboqs_hybrid_and_roundtrip() -> None:
+def test_real_liboqs_hybrid_roundtrip_with_container() -> None:
     os.environ["QID_PQC_BACKEND"] = "liboqs"
-    kp = generate_keypair(HYBRID_ALGO)
+
+    # Generate real PQC component keys
+    kp_ml = generate_keypair(ML_DSA_ALGO)
+    kp_fa = generate_keypair(FALCON_ALGO)
+
+    # Build container with BOTH public keys and BOTH secret keys (for this implementation)
+    container = build_container(
+        kid="test-kid",
+        ml_dsa_public_key=kp_ml.public_key,
+        falcon_public_key=kp_fa.public_key,
+        ml_dsa_secret_key=kp_ml.secret_key,
+        falcon_secret_key=kp_fa.secret_key,
+    )
+    container_b64 = encode_container(container)
+
+    # Hybrid signing uses container, not the hybrid keypair fields
+    kp_h = generate_keypair(HYBRID_ALGO)
     payload = {"x": 3}
-    sig = sign_payload(payload, kp)
-    assert verify_payload(payload, sig, kp) is True
+
+    sig = sign_payload(payload, kp_h, hybrid_container_b64=container_b64)
+    assert verify_payload(payload, sig, kp_h, hybrid_container_b64=container_b64) is True
