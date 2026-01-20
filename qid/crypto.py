@@ -24,54 +24,71 @@ from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
 
 
+# ---------------------------------------------------------------------------
+# Algorithm identifiers
+# ---------------------------------------------------------------------------
+
 DEV_ALGO = "dev-hmac-sha256"
 ML_DSA_ALGO = "pqc-ml-dsa"
 FALCON_ALGO = "pqc-falcon"
 HYBRID_ALGO = "pqc-hybrid-ml-dsa-falcon"
-_LEGACY_HYBRID_ALGO = "hybrid-dev-ml-dsa"
 
-_ALLOWED_ALGOS = {DEV_ALGO, ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO, _LEGACY_HYBRID_ALGO}
+# Legacy alias accepted for compatibility with older tests/docs
+_LEGACY_HYBRID_ALIAS = "hybrid-dev-ml-dsa"
+
+_ALLOWED_ALGOS = {DEV_ALGO, ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO, _LEGACY_HYBRID_ALIAS}
+
 _SIG_ENVELOPE_VERSION = 1
 
 
 @dataclass(frozen=True)
 class QIDKeyPair:
     algorithm: str
-    secret_key: str
-    public_key: str
+    secret_key: str  # base64
+    public_key: str  # base64
 
 
-def generate_dev_keypair() -> QIDKeyPair:
-    return generate_keypair(DEV_ALGO)
+# ---------------------------------------------------------------------------
+# Canonical encoding helpers
+# ---------------------------------------------------------------------------
 
 
-def _canonical_json(data: Mapping[str, Any]) -> bytes:
-    return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+def _b64encode(b: bytes) -> str:
+    return base64.b64encode(b).decode("ascii")
 
 
-def _b64encode(data: bytes) -> str:
-    return base64.b64encode(data).decode("ascii")
+def _b64decode(s: str) -> bytes:
+    return base64.b64decode(s.encode("ascii"))
 
 
-def _b64decode(data: str) -> bytes:
-    return base64.b64decode(data.encode("ascii"))
-
-
-def _envelope_encode(obj: Dict[str, Any]) -> str:
-    return _b64encode(_canonical_json(obj))
-
-
-def _envelope_decode(sig: str) -> Dict[str, Any] | None:
-    try:
-        raw = _b64decode(sig)
-        data = json.loads(raw.decode("utf-8"))
-        return data if isinstance(data, dict) else None
-    except Exception:
-        return None
+def _canonical_json(obj: Mapping[str, Any]) -> bytes:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
 def _normalize_alg(alg: str) -> str:
-    return HYBRID_ALGO if alg == _LEGACY_HYBRID_ALGO else alg
+    if alg == _LEGACY_HYBRID_ALIAS:
+        return HYBRID_ALGO
+    return alg
+
+
+def _envelope_encode(d: Mapping[str, Any]) -> str:
+    return _b64encode(_canonical_json(d))
+
+
+def _envelope_decode(sig_b64: str) -> Dict[str, Any]:
+    try:
+        raw = _b64decode(sig_b64)
+        obj = json.loads(raw.decode("utf-8"))
+        if not isinstance(obj, dict):
+            raise ValueError("envelope must be object")
+        return obj
+    except Exception as e:
+        raise ValueError("invalid signature envelope") from e
+
+
+# ---------------------------------------------------------------------------
+# CI-safe stub crypto
+# ---------------------------------------------------------------------------
 
 
 def _stub_sign_dev(msg: bytes, secret: bytes) -> bytes:
@@ -113,23 +130,44 @@ def _stub_verify_hybrid(msg: bytes, secret: bytes, sigs: Mapping[str, bytes]) ->
     if set(sigs.keys()) != {ML_DSA_ALGO, FALCON_ALGO}:
         return False
     s1, s2 = secret[:32], secret[32:64]
-    exp_ml = hmac.new(s1, msg, hashlib.sha256).digest()
-    exp_fa = hmac.new(s2, msg, hashlib.sha512).digest()
-    return hmac.compare_digest(exp_ml, sigs[ML_DSA_ALGO]) and hmac.compare_digest(exp_fa, sigs[FALCON_ALGO])
+    exp1 = hmac.new(s1, msg, hashlib.sha256).digest()
+    exp2 = hmac.new(s2, msg, hashlib.sha512).digest()
+    return hmac.compare_digest(exp1, sigs[ML_DSA_ALGO]) and hmac.compare_digest(exp2, sigs[FALCON_ALGO])
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 def generate_keypair(algorithm: str = DEV_ALGO) -> QIDKeyPair:
     """
-    CI-safe key generation.
+    Key generation.
 
-    NOTE: This does not require oqs/liboqs. It produces placeholder keys for PQC
-    algorithms so the protocol and tests can run everywhere.
+    Default behavior (CI-safe):
+      - Does not require oqs/liboqs
+      - Produces deterministic-format placeholder keys for PQC algs
+
+    Real PQC behavior (opt-in):
+      - If QID_PQC_BACKEND=liboqs and alg is ML_DSA_ALGO or FALCON_ALGO,
+        key generation uses liboqs.
+      - Hybrid key material is created via Hybrid Key Container (not here).
     """
     if algorithm not in _ALLOWED_ALGOS:
         raise ValueError(f"Unknown Q-ID algorithm: {algorithm!r}")
 
     alg = _normalize_alg(algorithm)
 
+    # Real PQC keygen (opt-in) for single PQC algs only.
+    # Hybrid keypairs are handled via Hybrid Key Container.
+    from qid.pqc_backends import PQCBackendError, liboqs_generate_keypair, selected_backend
+
+    backend = selected_backend()
+    if backend is not None and backend == "liboqs" and alg in (ML_DSA_ALGO, FALCON_ALGO):
+        pub_b, sec_b = liboqs_generate_keypair(alg)
+        return QIDKeyPair(algorithm=alg, secret_key=_b64encode(sec_b), public_key=_b64encode(pub_b))
+
+    # Default CI-safe stub keygen
     if alg == DEV_ALGO:
         secret = secrets.token_bytes(32)
     elif alg in (ML_DSA_ALGO, FALCON_ALGO):
@@ -152,7 +190,12 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
       - REQUIRED when QID_PQC_BACKEND is selected and alg is HYBRID_ALGO
       - Not required in stub mode (CI-safe)
     """
-    from qid.pqc_backends import PQCBackendError, enforce_no_silent_fallback_for_alg, liboqs_sign, selected_backend
+    from qid.pqc_backends import (
+        PQCBackendError,
+        enforce_no_silent_fallback_for_alg,
+        liboqs_sign,
+        selected_backend,
+    )
     from qid.hybrid_key_container import try_decode_container
 
     alg = _normalize_alg(keypair.algorithm)
@@ -197,7 +240,10 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
             {
                 "v": _SIG_ENVELOPE_VERSION,
                 "alg": HYBRID_ALGO,
-                "sigs": {ML_DSA_ALGO: _b64encode(sig_ml), FALCON_ALGO: _b64encode(sig_fa)},
+                "sigs": {
+                    ML_DSA_ALGO: _b64encode(sig_ml),
+                    FALCON_ALGO: _b64encode(sig_fa),
+                },
             }
         )
 
@@ -215,7 +261,11 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
     if alg == HYBRID_ALGO:
         sigs = _stub_sign_hybrid(msg, secret)
         return _envelope_encode(
-            {"v": _SIG_ENVELOPE_VERSION, "alg": HYBRID_ALGO, "sigs": {k: _b64encode(v) for k, v in sigs.items()}}
+            {
+                "v": _SIG_ENVELOPE_VERSION,
+                "alg": HYBRID_ALGO,
+                "sigs": {k: _b64encode(v) for k, v in sigs.items()},
+            }
         )
 
     raise ValueError(f"Unsupported algorithm for signing: {keypair.algorithm!r}")
@@ -229,116 +279,95 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
       - Optional base64(JSON) Hybrid Key Container v1
       - REQUIRED when QID_PQC_BACKEND is selected and alg is HYBRID_ALGO
     """
-    from qid.pqc_backends import PQCBackendError, enforce_no_silent_fallback_for_alg, liboqs_verify, selected_backend
+    from qid.pqc_backends import (
+        PQCBackendError,
+        enforce_no_silent_fallback_for_alg,
+        liboqs_verify,
+        selected_backend,
+    )
     from qid.hybrid_key_container import try_decode_container
 
-    env = _envelope_decode(signature)
-    if env is None:
-        return False
-    if env.get("v") != _SIG_ENVELOPE_VERSION:
-        return False
-
-    env_alg = env.get("alg")
-    if not isinstance(env_alg, str):
-        return False
-    env_alg = _normalize_alg(env_alg)
-
-    kp_alg = _normalize_alg(keypair.algorithm)
-    if env_alg != kp_alg:
-        return False
-    if env_alg not in _ALLOWED_ALGOS:
+    try:
+        env = _envelope_decode(signature)
+        if env.get("v") != _SIG_ENVELOPE_VERSION:
+            return False
+        alg = _normalize_alg(str(env.get("alg")))
+    except Exception:
         return False
 
     msg = _canonical_json(payload)
     backend = selected_backend()
 
-    if backend is not None and env_alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
+    # Real backend selected: enforce no silent fallback for PQC algs.
+    if backend is not None and alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
         try:
-            enforce_no_silent_fallback_for_alg(env_alg)
-        except PQCBackendError:
-            return False
+            enforce_no_silent_fallback_for_alg(alg)
 
-        if env_alg in (ML_DSA_ALGO, FALCON_ALGO):
-            sig_b64 = env.get("sig")
-            if not isinstance(sig_b64, str):
+            if alg in (ML_DSA_ALGO, FALCON_ALGO):
+                sig_b64 = env.get("sig")
+                if not isinstance(sig_b64, str):
+                    return False
+                sig = _b64decode(sig_b64)
+                pub = _b64decode(keypair.public_key)
+                return liboqs_verify(alg, msg, sig, pub)
+
+            # HYBRID verify requires explicit container (contract-locked)
+            if hybrid_container_b64 is None:
                 return False
-            try:
-                sig_bytes = _b64decode(sig_b64)
-            except Exception:
-                return False
-            pub = _b64decode(keypair.public_key)
-            try:
-                return liboqs_verify(env_alg, msg, sig_bytes, pub)
-            except PQCBackendError:
+            container = try_decode_container(hybrid_container_b64)
+            if container is None or container.alg != HYBRID_ALGO:
                 return False
 
-        # HYBRID real verification requires container
-        if hybrid_container_b64 is None:
-            return False
+            sigs = env.get("sigs")
+            if not isinstance(sigs, dict):
+                return False
+            sig_ml_b64 = sigs.get(ML_DSA_ALGO)
+            sig_fa_b64 = sigs.get(FALCON_ALGO)
+            if not isinstance(sig_ml_b64, str) or not isinstance(sig_fa_b64, str):
+                return False
 
-        container = try_decode_container(hybrid_container_b64)
-        if container is None:
-            return False
-        if container.alg != HYBRID_ALGO:
-            return False
-
-        sigs = env.get("sigs")
-        if not isinstance(sigs, dict):
-            return False
-        if set(sigs.keys()) != {ML_DSA_ALGO, FALCON_ALGO}:
-            return False
-
-        try:
-            sig_ml = _b64decode(sigs[ML_DSA_ALGO])
-            sig_fa = _b64decode(sigs[FALCON_ALGO])
-        except Exception:
-            return False
-
-        try:
+            sig_ml = _b64decode(sig_ml_b64)
+            sig_fa = _b64decode(sig_fa_b64)
             pub_ml = _b64decode(container.ml_dsa.public_key)
             pub_fa = _b64decode(container.falcon.public_key)
-        except Exception:
-            return False
 
-        try:
             ok_ml = liboqs_verify(ML_DSA_ALGO, msg, sig_ml, pub_ml)
             ok_fa = liboqs_verify(FALCON_ALGO, msg, sig_fa, pub_fa)
             return bool(ok_ml and ok_fa)
+
         except PQCBackendError:
             return False
-
-    # Default stub verification
-    secret = _b64decode(keypair.secret_key)
-
-    if env_alg in (DEV_ALGO, ML_DSA_ALGO, FALCON_ALGO):
-        sig_b64 = env.get("sig")
-        if not isinstance(sig_b64, str):
-            return False
-        try:
-            sig_bytes = _b64decode(sig_b64)
         except Exception:
             return False
-        if env_alg == DEV_ALGO:
-            return _stub_verify_dev(msg, secret, sig_bytes)
-        return _stub_verify_pqc(msg, secret, sig_bytes, env_alg)
 
-    if env_alg == HYBRID_ALGO:
-        sigs = env.get("sigs")
-        if not isinstance(sigs, dict):
-            return False
-        if set(sigs.keys()) != {ML_DSA_ALGO, FALCON_ALGO}:
-            return False
+    # Default stub verification (CI-safe)
+    try:
+        secret = _b64decode(keypair.secret_key)
 
-        decoded: Dict[str, bytes] = {}
-        for k in (ML_DSA_ALGO, FALCON_ALGO):
-            v = sigs.get(k)
-            if not isinstance(v, str):
+        if alg == DEV_ALGO:
+            sig_b64 = env.get("sig")
+            if not isinstance(sig_b64, str):
+                return False
+            sig = _b64decode(sig_b64)
+            return _stub_verify_dev(msg, secret, sig)
+
+        if alg in (ML_DSA_ALGO, FALCON_ALGO):
+            sig_b64 = env.get("sig")
+            if not isinstance(sig_b64, str):
+                return False
+            sig = _b64decode(sig_b64)
+            return _stub_verify_pqc(msg, secret, sig, alg)
+
+        if alg == HYBRID_ALGO:
+            sigs = env.get("sigs")
+            if not isinstance(sigs, dict):
                 return False
             try:
-                decoded[k] = _b64decode(v)
+                sig_map = {k: _b64decode(v) for k, v in sigs.items() if isinstance(v, str)}
             except Exception:
                 return False
+            return _stub_verify_hybrid(msg, secret, sig_map)
 
-        return _stub_verify_hybrid(msg, secret, decoded)
-
-    return False
+        return False
+    except Exception:
+        return False
