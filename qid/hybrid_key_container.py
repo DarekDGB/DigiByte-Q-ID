@@ -10,6 +10,7 @@ Must be:
 - Strictly validated
 - Fail-closed on decode
 - Provide stable container hash for binding / auditing
+- Provide a public-only view (no secret leakage)
 
 Author: DarekDGB
 License: MIT (see repo LICENSE)
@@ -21,7 +22,7 @@ import base64
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from .crypto import HYBRID_ALGO
 
@@ -75,14 +76,6 @@ def build_container(
     ml_dsa_secret: Optional[str] = None,
     falcon_secret: Optional[str] = None,
 ) -> HybridKeyContainer:
-    """
-    Build a v1 container.
-
-    Tests expect keyword args:
-      build_container(alg=..., ml_dsa_pub=..., falcon_pub=...)
-
-    We also accept back-compat names.
-    """
     if ml_dsa_public_key is not None:
         ml_dsa_pub = ml_dsa_public_key
     if falcon_public_key is not None:
@@ -128,7 +121,6 @@ def encode_container(c: HybridKeyContainer) -> str:
 
 
 def try_decode_container(b64: str) -> Optional[HybridKeyContainer]:
-    """Fail-closed decode: returns None on any error/invalid structure."""
     try:
         return decode_container(b64)
     except Exception:
@@ -136,11 +128,6 @@ def try_decode_container(b64: str) -> Optional[HybridKeyContainer]:
 
 
 def decode_container(b64: str) -> HybridKeyContainer:
-    """
-    Strict decode: returns a HybridKeyContainer or raises ValueError.
-
-    Tests expect this function.
-    """
     try:
         raw = _b64decode(b64)
         obj = json.loads(raw.decode("utf-8"))
@@ -187,14 +174,30 @@ def decode_container(b64: str) -> HybridKeyContainer:
     )
 
 
+def public_view_dict(container: Union[str, HybridKeyContainer]) -> Dict[str, Any]:
+    """
+    Return a public-only dict view of the container (NO secret keys).
+
+    Tests expect this helper.
+    Accepts either:
+      - base64 container string
+      - HybridKeyContainer object
+    """
+    c = decode_container(container) if isinstance(container, str) else container
+    return {
+        "v": c.v,
+        "alg": c.alg,
+        "kid": c.kid,
+        "ml_dsa": {"public_key": c.ml_dsa.public_key},
+        "falcon": {"public_key": c.falcon.public_key},
+    }
+
+
 def compute_container_hash(b64: str) -> str:
     """
-    Compute a stable SHA-256 hash over the container's canonical JSON bytes.
-
-    Tests expect this function.
+    Compute stable SHA-256 hash over canonical JSON bytes of a VALID container.
     Returns hex string.
     """
-    # Strict decode to guarantee we hash only valid containers.
     c = decode_container(b64)
     d = {
         "v": c.v,
@@ -203,5 +206,4 @@ def compute_container_hash(b64: str) -> str:
         "ml_dsa": {"public_key": c.ml_dsa.public_key, "secret_key": c.ml_dsa.secret_key},
         "falcon": {"public_key": c.falcon.public_key, "secret_key": c.falcon.secret_key},
     }
-    h = hashlib.sha256(_canonical_json(d)).hexdigest()
-    return h
+    return hashlib.sha256(_canonical_json(d)).hexdigest()
