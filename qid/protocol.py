@@ -18,30 +18,15 @@ Fail-closed + CI-safe rules:
 
 from __future__ import annotations
 
-import base64
-import json
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union, overload
 
 from .crypto import QIDKeyPair, sign_payload, verify_payload
 from .qr_payloads import decode_login_request, encode_login_request
-
-
-# ---------------------------------------------------------------------------
-# Shared base64url helpers (local to this module)
-# ---------------------------------------------------------------------------
-
-
-def _b64url_encode(data: bytes) -> str:
-    """Encode bytes to URL-safe base64 without padding."""
-    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
-
-
-def _b64url_decode(token: str) -> bytes:
-    """Decode URL-safe base64 without padding."""
-    padding = "=" * (-len(token) % 4)
-    return base64.urlsafe_b64decode(token + padding)
-
+from .uri_scheme import (
+    decode_registration_uri as _decode_registration_uri,
+    encode_registration_uri as _encode_registration_uri,
+)
 
 # ---------------------------------------------------------------------------
 # SignedMessage wrapper (used by tests)
@@ -73,8 +58,6 @@ def sign_message(
     try:
         sig = sign_payload(payload, keypair, hybrid_container_b64=hybrid_container_b64)
     except Exception:
-        # Fail-closed, but do not crash protocol layer.
-        # Verification will return False because the envelope is invalid/empty.
         sig = ""
     return SignedMessage(
         payload=payload,
@@ -147,12 +130,18 @@ def build_login_response_payload(
     return payload
 
 
-def sign_login_response(payload: Dict[str, Any], keypair: QIDKeyPair) -> str:
-    return sign_payload(payload, keypair)
+def sign_login_response(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_container_b64: Optional[str] = None) -> str:
+    return sign_payload(payload, keypair, hybrid_container_b64=hybrid_container_b64)
 
 
-def verify_login_response(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair) -> bool:
-    return verify_payload(payload, signature, keypair)
+def verify_login_response(
+    payload: Dict[str, Any],
+    signature: str,
+    keypair: QIDKeyPair,
+    *,
+    hybrid_container_b64: Optional[str] = None,
+) -> bool:
+    return verify_payload(payload, signature, keypair, hybrid_container_b64=hybrid_container_b64)
 
 
 def server_verify_login_response(
@@ -160,6 +149,8 @@ def server_verify_login_response(
     response_payload: Dict[str, Any],
     signature: str,
     keypair: QIDKeyPair,
+    *,
+    hybrid_container_b64: Optional[str] = None,
 ) -> bool:
     if response_payload.get("type") != "login_response":
         return False
@@ -167,7 +158,7 @@ def server_verify_login_response(
         return False
     if response_payload.get("nonce") != request_payload.get("nonce"):
         return False
-    return verify_login_response(response_payload, signature, keypair)
+    return verify_login_response(response_payload, signature, keypair, hybrid_container_b64=hybrid_container_b64)
 
 
 # Overloads to match tests + explicit API
@@ -209,13 +200,11 @@ def login(
     2) Real builder mode:
          login(service_id, callback_url, nonce, *, address, pubkey, keypair, ...) -> SignedMessage
     """
-    # Mode 1: placeholder call
     if isinstance(service_id_or_payload, dict) and all(
         v is None for v in (callback_url, nonce, address, pubkey, keypair)
     ):
         return {"status": "todo"}
 
-    # Mode 2: strict mode
     if not isinstance(service_id_or_payload, str):
         raise TypeError("login(): expected service_id (str) or placeholder payload (dict).")
 
@@ -266,48 +255,13 @@ def build_registration_payload(
 
 
 def build_registration_uri(payload: Dict[str, Any]) -> str:
-    json_str = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-    token = _b64url_encode(json_str.encode("utf-8"))
-    return f"qid://register?d={token}"
+    return _encode_registration_uri(payload)
 
 
 def parse_registration_uri(uri: str) -> Dict[str, Any]:
-    prefix = "qid://"
-    if not uri.startswith(prefix):
-        raise ValueError("Not a Q-ID URI (missing 'qid://' prefix).")
-
-    rest = uri[len(prefix) :]
-    if "?" not in rest:
-        raise ValueError("Q-ID URI missing query part.")
-
-    action, query = rest.split("?", 1)
-    if action != "register":
-        raise ValueError(f"Unsupported Q-ID action for registration: {action!r}")
-
-    token = None
-    for pair in query.split("&"):
-        if not pair:
-            continue
-        key, _, value = pair.partition("=")
-        if key == "d":
-            token = value
-            break
-    if token is None:
-        raise ValueError("Q-ID registration URI missing 'd' parameter.")
-
-    try:
-        data_bytes = _b64url_decode(token)
-        payload = json.loads(data_bytes.decode("utf-8"))
-    except Exception as exc:  # noqa: BLE001
-        raise ValueError("Failed to decode Q-ID registration payload.") from exc
-
-    if not isinstance(payload, dict):
-        raise ValueError("Q-ID registration payload must be a JSON object.")
-
-    return payload
+    return _decode_registration_uri(uri)
 
 
-# Overloads to match tests + explicit API
 @overload
 def register_identity(payload: Dict[str, Any]) -> Dict[str, str]: ...
 @overload
@@ -344,13 +298,11 @@ def register_identity(
     2) Real builder mode:
          register_identity(service_id, address, pubkey, nonce, callback_url, keypair, ...) -> SignedMessage
     """
-    # Mode 1: placeholder call
     if isinstance(service_id_or_payload, dict) and all(
         v is None for v in (address, pubkey, nonce, callback_url, keypair)
     ):
         return {"status": "todo"}
 
-    # Mode 2: strict mode
     if not isinstance(service_id_or_payload, str):
         raise TypeError("register_identity(): expected service_id (str) or placeholder payload (dict).")
 
