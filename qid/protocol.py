@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from .crypto import QIDKeyPair, sign_payload, verify_payload
+from .pqc_backends import PQCBackendError
 from .uri_scheme import (
     decode_login_request_uri,
     decode_registration_uri,
@@ -52,14 +53,13 @@ def sign_message(
     Sign an arbitrary protocol payload and return a SignedMessage.
 
     Fail-closed policy:
-    - For expected validation/config errors (ValueError/TypeError),
-      do not raise from the protocol layer. Return an empty signature so
-      verification fails closed.
+    - For expected validation/config/backend errors (ValueError/TypeError/PQCBackendError),
+      do not raise from the protocol layer. Return an empty signature so verification fails.
     - Do NOT blanket-catch all exceptions; programmer bugs must surface.
     """
     try:
         sig = sign_payload(payload, keypair, hybrid_container_b64=hybrid_container_b64)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, PQCBackendError):
         sig = ""  # fail-closed without crashing protocol layer
 
     return SignedMessage(
@@ -193,6 +193,15 @@ def login(
 
     Strict-only (no legacy placeholder mode).
     """
+    if not isinstance(service_id, str):
+        raise TypeError("login(): service_id must be a str.")
+    if not isinstance(callback_url, str) or not isinstance(nonce, str):
+        raise TypeError("login(): callback_url and nonce must be str.")
+    if keypair is None:
+        raise TypeError("login(): keypair must be provided.")
+    if address is None or pubkey is None:
+        raise TypeError("login(): address and pubkey must be provided.")
+
     req = build_login_request_payload(
         service_id=service_id,
         nonce=nonce,
@@ -257,6 +266,13 @@ def register_identity(
 
     Strict-only (no legacy placeholder mode).
     """
+    if not isinstance(service_id, str):
+        raise TypeError("register_identity(): service_id must be a str.")
+    if keypair is None:
+        raise TypeError("register_identity(): keypair must be provided.")
+    if address is None or pubkey is None or nonce is None or callback_url is None:
+        raise TypeError("register_identity(): missing required registration arguments.")
+
     payload = build_registration_payload(
         service_id=service_id,
         address=address,
