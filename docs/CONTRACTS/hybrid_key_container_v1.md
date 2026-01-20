@@ -1,3 +1,8 @@
+<!--
+MIT License
+Copyright (c) 2025 DarekDGB
+-->
+
 # Hybrid Key Container v1 Contract
 
 Author: DarekDGB  
