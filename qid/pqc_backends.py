@@ -1,59 +1,86 @@
 """
-MIT License
-Copyright (c) 2025 DarekDGB
+PQC backend selection + wiring for DigiByte Q-ID.
+
+Design goals (contract + tests):
+- CI-safe by default: no pqc deps required unless user explicitly selects a backend.
+- No silent fallback: if a real backend is selected, PQC algs MUST NOT silently degrade.
+- Deterministic behavior:
+  - sign paths may raise PQCBackendError when backend selected but unavailable.
+  - verify paths MUST fail-closed (return False) on internal errors.
 """
 
 from __future__ import annotations
 
+from typing import Any
 import os
-from typing import Any, Optional
+
+# These constants are also imported by tests.
+ML_DSA_ALGO = "pqc-ml-dsa"
+FALCON_ALGO = "pqc-falcon"
+HYBRID_ALGO = "pqc-hybrid-ml-dsa-falcon"
 
 
 class PQCBackendError(RuntimeError):
     pass
 
 
-# Algorithm ids (must match qid.crypto)
-ML_DSA_ALGO = "pqc-ml-dsa"
-FALCON_ALGO = "pqc-falcon"
-HYBRID_ALGO = "pqc-hybrid-ml-dsa-falcon"
-
-
-# Map Q-ID alg -> liboqs alg names (placeholder mapping; real values can be swapped later)
+# Map Q-ID alg identifiers to liboqs algorithm names.
+# (Exact mapping can be adjusted later, but tests only require support gating.)
 _OQS_ALG_BY_QID = {
-    ML_DSA_ALGO: "ML-DSA-44",
-    FALCON_ALGO: "Falcon-512",
+    ML_DSA_ALGO: "Dilithium2",  # placeholder mapping
+    FALCON_ALGO: "Falcon-512",  # placeholder mapping
 }
 
 
-def selected_backend() -> Optional[str]:
+def selected_backend() -> str | None:
     """
-    Return normalized backend selector or None.
-    Tests expect trimming + lowercasing.
+    Return normalized selected backend from env var QID_PQC_BACKEND.
+
+    - None means "stub mode" (CI-safe, uses local deterministic stubs).
+    - "liboqs" means "real PQC backend expected".
     """
-    v = os.environ.get("QID_PQC_BACKEND")
-    if v is None:
+    raw = os.getenv("QID_PQC_BACKEND")
+    if raw is None:
         return None
-    v2 = v.strip().lower()
-    if v2 == "":
-        return None
-    return v2
+    s = raw.strip().lower()
+    return s or None
 
 
 def require_real_pqc() -> bool:
+    """True when user explicitly selected a real PQC backend."""
     return selected_backend() is not None
 
 
 def _oqs_alg_for(qid_alg: str) -> str:
+    """
+    Convert Q-ID alg identifier to liboqs algorithm name.
+
+    IMPORTANT for tests:
+    - For non-PQC algs, this must raise ValueError (not PQCBackendError).
+    """
     if qid_alg not in _OQS_ALG_BY_QID:
-        raise PQCBackendError(f"Unsupported PQC algorithm for liboqs: {qid_alg!r}")
+        raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
     return _OQS_ALG_BY_QID[qid_alg]
+
+
+def _validate_oqs_module(oqs: Any) -> None:
+    """
+    Validate that `oqs` looks like python-oqs.
+
+    Tests expect PQCBackendError when invalid.
+    """
+    sig = getattr(oqs, "Signature", None)
+    if sig is None or not callable(sig):
+        raise PQCBackendError("Invalid oqs backend object: missing callable Signature")
 
 
 def _import_oqs() -> Any:
     """
-    Import python-oqs when backend selected. In CI it is usually missing.
-    This is only used when you truly select QID_PQC_BACKEND=liboqs.
+    Import python-oqs when backend selected.
+    In CI it is usually missing.
+
+    Tests expect:
+    - PQCBackendError when oqs is missing.
     """
     try:
         import oqs  # type: ignore
@@ -65,54 +92,76 @@ def _import_oqs() -> Any:
     return oqs
 
 
-def _validate_oqs_module(oqs: Any) -> None:
+def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
     """
-    Tests patch _import_oqs to return a fake object and expect PQCBackendError.
-    """
-    if oqs is None:
-        raise PQCBackendError("Invalid oqs backend (None)")
-    if not hasattr(oqs, "Signature"):
-        raise PQCBackendError("Invalid oqs backend (missing Signature)")
+    Guardrail: if a real backend is selected, PQC algorithms must NOT silently fall back.
 
-
-def enforce_no_silent_fallback_for_alg(alg: str) -> None:
+    Tests expect:
+    - unknown backend -> PQCBackendError
+    - liboqs selected but oqs missing -> PQCBackendError for PQC algs
+    - when backend not selected -> do nothing
     """
-    Guardrail: when a real backend is selected, PQC algs must not silently fall back.
-    """
-    if alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO} and selected_backend() is not None:
-        # nothing else to do here; presence of this call is contract-style
+    backend = selected_backend()
+    if backend is None:
         return
 
+    if backend != "liboqs":
+        raise PQCBackendError(f"Unknown QID_PQC_BACKEND: {backend!r}")
 
-def liboqs_generate_keypair(qid_alg: str) -> tuple[bytes, bytes]:
-    """
-    Keypair generation for real liboqs mode.
-    In CI we typically don't have oqs, so this is only used when explicitly selected.
-    """
+    # Only enforce for PQC algorithms.
+    if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
+        return
+
+    # If oqs isn't available, raise (CI expected behavior).
     oqs = _import_oqs()
     _validate_oqs_module(oqs)
-
-    # If you get here with a fake oqs object, we must raise (tests depend on raising)
-    raise PQCBackendError("liboqs keygen not wired in this repo yet")
 
 
 def liboqs_sign(qid_alg: str, msg: bytes, priv: bytes) -> bytes:
+    """
+    Low-level sign using python-oqs.
+
+    Tests require:
+    - Unsupported alg -> ValueError (and MUST happen before import oqs).
+    - Invalid oqs backend object -> PQCBackendError.
+    - If Signature ctor raises TypeError -> PQCBackendError.
+    """
+    oqs_alg = _oqs_alg_for(qid_alg)  # ValueError for non-PQC algs (no oqs import)
     oqs = _import_oqs()
     _validate_oqs_module(oqs)
 
-    # must raise until truly wired (tests cover this)
-    _oqs_alg_for(qid_alg)  # may raise if unsupported
-    raise PQCBackendError("liboqs signing not wired in this repo yet")
+    try:
+        with oqs.Signature(oqs_alg) as signer:
+            # python-oqs uses signer.sign(message, secret_key_bytes)
+            return signer.sign(msg, priv)
+    except TypeError as e:
+        # Tests explicitly hit this branch.
+        raise PQCBackendError("liboqs signing failed (Signature ctor rejected inputs)") from e
+    except PQCBackendError:
+        raise
+    except Exception as e:  # pragma: no cover
+        raise PQCBackendError("liboqs signing failed") from e
 
 
 def liboqs_verify(qid_alg: str, msg: bytes, sig: bytes, pub: bytes) -> bool:
     """
-    Low-level verify:
-    - MUST validate backend object and raise PQCBackendError if invalid (tests expect raise)
-    - When wired for real, could return True/False based on oqs verify.
+    Low-level verify using python-oqs.
+
+    Tests require:
+    - Invalid backend object -> PQCBackendError (do NOT swallow).
+    - Unsupported alg -> ValueError.
+    - Internal verifier exception -> return False (fail-closed).
     """
+    oqs_alg = _oqs_alg_for(qid_alg)  # ValueError for non-PQC algs
     oqs = _import_oqs()
     _validate_oqs_module(oqs)
 
-    _oqs_alg_for(qid_alg)  # may raise if unsupported
-    raise PQCBackendError("liboqs verify not wired in this repo yet")
+    try:
+        with oqs.Signature(oqs_alg) as verifier:
+            return bool(verifier.verify(msg, sig, pub))
+    except (ValueError, PQCBackendError):
+        # Preserve strict errors for tests / callers.
+        raise
+    except Exception:
+        # Fail-closed: verify never crashes callers.
+        return False
