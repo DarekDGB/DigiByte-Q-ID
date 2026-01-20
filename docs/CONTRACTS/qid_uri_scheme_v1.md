@@ -1,3 +1,8 @@
+<!--
+MIT License
+Copyright (c) 2025 DarekDGB
+-->
+
 # Q-ID URI Scheme v1
 
 Author: DarekDGB  
