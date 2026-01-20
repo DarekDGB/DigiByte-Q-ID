@@ -20,15 +20,18 @@ from typing import Any, Optional, Tuple
 
 
 class PQCBackendError(RuntimeError):
-    """Raised when a real PQC backend is required but unavailable."""
+    """Raised when a real PQC backend is required but unavailable or invalid."""
 
 
-# QID algorithm IDs
+# Q-ID algorithm IDs (must match qid.crypto)
 ML_DSA_ALGO = "pqc-ml-dsa"
 FALCON_ALGO = "pqc-falcon"
 HYBRID_ALGO = "pqc-hybrid-ml-dsa-falcon"
 
-# liboqs algorithm names (stable mapping)
+
+# Mapping from Q-ID alg IDs to liboqs alg names.
+# NOTE: These are common liboqs/liboqs-python identifiers. If your platform only
+# supports different parameter sets, adjust here (and add opt-in tests).
 _OQS_ALG_BY_QID = {
     ML_DSA_ALGO: "ML-DSA-44",
     FALCON_ALGO: "Falcon-512",
@@ -64,13 +67,14 @@ def _validate_oqs_module(oqs: Any) -> None:
 def _import_oqs() -> Any:
     try:
         import oqs  # type: ignore
-        _validate_oqs_module(oqs)
-        return oqs
-    except Exception as e:
+    except Exception as e:  # pragma: no cover
         raise PQCBackendError(
             "QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available. "
             'Install optional deps: pip install -e ".[dev,pqc]"'
         ) from e
+
+    _validate_oqs_module(oqs)
+    return oqs
 
 
 def enforce_no_silent_fallback_for_alg(alg: str) -> None:
@@ -79,7 +83,7 @@ def enforce_no_silent_fallback_for_alg(alg: str) -> None:
 
     Raises PQCBackendError if:
     - backend is unknown
-    - backend required for this algorithm but not available
+    - backend required for this algorithm but not available/valid
     """
     backend = selected_backend()
     if backend is None:
@@ -89,7 +93,6 @@ def enforce_no_silent_fallback_for_alg(alg: str) -> None:
         raise PQCBackendError(f"Unknown QID_PQC_BACKEND value: {backend!r}")
 
     if alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
-        # Ensure oqs is importable and sane
         _import_oqs()
 
 
@@ -102,12 +105,10 @@ def liboqs_generate_keypair(qid_alg: str) -> Tuple[bytes, bytes]:
     oqs_alg = _oqs_alg_for(qid_alg)
     oqs = _import_oqs()
 
-    # NOTE: liboqs-python API may differ by platform/version.
-    # We try the common pattern and fail loudly if unsupported.
     try:
         with oqs.Signature(oqs_alg) as s:
             pub = s.generate_keypair()
-            # export_secret_key() is the common way to obtain private key bytes
+            # Common liboqs-python API
             sec = s.export_secret_key()
             if not isinstance(pub, (bytes, bytearray)) or not isinstance(sec, (bytes, bytearray)):
                 raise PQCBackendError("oqs keypair generation returned non-bytes")
@@ -131,6 +132,8 @@ def liboqs_sign(qid_alg: str, payload: bytes, private_key: bytes) -> bytes:
     oqs_alg = _oqs_alg_for(qid_alg)
     oqs = _import_oqs()
 
+    _validate_oqs_module(oqs)
+
     try:
         with oqs.Signature(oqs_alg, private_key) as signer:
             sig = signer.sign(payload)
@@ -148,11 +151,17 @@ def liboqs_sign(qid_alg: str, payload: bytes, private_key: bytes) -> bytes:
 def liboqs_verify(qid_alg: str, payload: bytes, signature: bytes, public_key: bytes) -> bool:
     """
     Real liboqs verification.
-    Returns boolean and never raises for signature mismatch, but may raise PQCBackendError
-    for missing/misconfigured backend.
+
+    Returns boolean and never raises for signature mismatch.
+    Raises PQCBackendError only if backend is missing/invalid.
+    Callers that want "never raise" must catch PQCBackendError.
     """
     oqs_alg = _oqs_alg_for(qid_alg)
     oqs = _import_oqs()
+
+    # In tests, _import_oqs may be monkeypatched to return object().
+    # We must fail-closed loudly in that case.
+    _validate_oqs_module(oqs)
 
     try:
         with oqs.Signature(oqs_alg) as verifier:
