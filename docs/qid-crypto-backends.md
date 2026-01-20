@@ -1,175 +1,146 @@
-# DigiByte Q-ID — Crypto Backends
+<!--
+MIT License
+Copyright (c) 2025 DarekDGB
+-->
 
-Status: **draft – dev backend + PQC stubs implemented**
+# DigiByte Q-ID — Crypto Backends (Non-Normative)
 
-This document explains how the Q-ID reference implementation handles
-cryptography today, and how it is designed to evolve once DigiByte Core
-chooses an official post‑quantum (PQC) standard.
+> **Status:** Developer documentation  
+> **Normative rules live in `docs/CONTRACTS/`.**  
+> If this document conflicts with a contract, **the contract wins**.
 
-The goal is:
-
-- keep the **Python reference code simple and portable**
-- expose **stable interfaces** so real PQC libraries can drop in later
-- make it clear which pieces are **development stubs** vs **production
-  critical** code
+This document explains how cryptographic backends are selected in Q-ID and how
+**CI-safe stub mode** differs from the **optional real PQC backend**.
 
 ---
 
-## 1. Backends overview
+## 1. Backend selection
 
-All Q-ID crypto lives in `qid/crypto.py` and is exposed through:
+Q-ID supports explicit backend selection via environment variable:
 
-- `QIDKeyPair` – minimal key pair structure
-- `generate_keypair(algorithm: str)` – generic key generation
-- `generate_dev_keypair()` – convenience for the default dev backend
-- `sign_payload(payload, keypair)` – canonical JSON signing
-- `verify_payload(payload, signature, keypair)` – signature verification
-
-The following algorithm identifiers are currently defined:
-
-```python
-DEV_ALGO    = "dev-hmac-sha256"
-ML_DSA_ALGO = "pqc-ml-dsa"
-FALCON_ALGO = "pqc-falcon"
-HYBRID_ALGO = "hybrid-dev-ml-dsa"
+```text
+QID_PQC_BACKEND
 ```
 
-These strings are the **public contract** – they are what wallets,
-servers and future bindings will negotiate on.
+Valid values:
+- *(unset)* — CI-safe stub backend (**default**)
+- `liboqs` — real post-quantum backend (optional)
+
+Any other value is invalid and results in an error.
+
+Backend selection is resolved at runtime by `qid.pqc_backends.selected_backend()`.
 
 ---
 
-## 2. Dev backend – `dev-hmac-sha256` (current default)
+## 2. CI-safe stub backend (default)
 
-**Purpose:** make Q-ID easy to prototype and test without requiring any
-external crypto libraries.
+When `QID_PQC_BACKEND` is **not set**:
 
-Implementation details:
+- Deterministic keys are generated
+- Deterministic signatures are produced
+- No external PQC libraries are required
+- All algorithms remain selectable
 
-- 32‑byte random secret key
-- public key = `sha256(secret_key)`
-- signatures = `HMAC-SHA256(secret_key, canonical_json(payload))`
-- encoded as base64 strings
+This mode exists to ensure:
+- portable CI
+- deterministic testing
+- reproducible examples
 
-Security notes:
-
-- This behaves like a shared‑secret MAC, not a real public‑key scheme.
-- It is **not intended for production** on the open internet.
-- It is perfect for:
-  - unit tests
-  - local demos
-  - offline experimentation
-  - CI pipelines (GitHub Actions, etc.)
+**Important:**  
+Stub mode is *not* post-quantum secure. It is a **testing and development mode only**.
 
 ---
 
-## 3. PQC stubs – `pqc-ml-dsa` and `pqc-falcon`
+## 3. Real PQC backend (`liboqs`) — optional
 
-These backends model what a real PQC integration will look like while
-remaining extremely small and dependency‑free.
+When:
 
-Implementation (reference version):
+```bash
+export QID_PQC_BACKEND=liboqs
+```
 
-- 64‑byte random secret key (to mimic larger PQC keys)
-- public key = `sha256(secret_key)` (placeholder)
-- signatures:
-  - use `HMAC-SHA512(secret_key, canonical_json(payload))`
-  - prefixed with the algorithm name:  
-    `b"pqc-ml-dsa:" + mac` or `b"pqc-falcon:" + mac`
-  - whole blob then base64‑encoded
+Q-ID switches to **real cryptographic enforcement**:
 
-Why this design is useful:
+- Algorithms `pqc-ml-dsa`, `pqc-falcon`, and `pqc-hybrid-ml-dsa-falcon` are enforced
+- Silent fallback is explicitly forbidden
+- Missing or invalid backend configuration raises `PQCBackendError`
 
-- Signatures from different backends are **not interchangeable** because
-  of the explicit prefix.
-- Switching to a real ML‑DSA or Falcon implementation later can reuse:
-  - `QIDKeyPair`
-  - `generate_keypair(algorithm)`
-  - `sign_payload` / `verify_payload`
-- All integration tests already exercise these code paths, so when real
-  libraries are introduced we immediately know if anything breaks.
-
-Production expectation:
-
-- Replace the HMAC‑based stubs with:
-  - real ML‑DSA key generation & signatures
-  - real Falcon key generation & signatures
-- Keep algorithm identifiers and function signatures exactly the same.
+Tests that require `liboqs` are **optional** and skipped automatically if unavailable.
 
 ---
 
-## 4. Hybrid backend – `hybrid-dev-ml-dsa`
+## 4. Algorithm enforcement rules
 
-Some deployments may want a **hybrid** strategy – combining a classical
-algorithm with a PQC scheme during the migration period.
+### 4.1 Single-algorithm PQC
 
-In the reference implementation this is simulated as:
+For:
+- `pqc-ml-dsa`
+- `pqc-falcon`
 
-- 64‑byte secret key, split into two 32‑byte halves: `s1` and `s2`
-- signature parts:
-  - `sig1 = HMAC-SHA256(s1, canonical_json(payload))`
-  - `sig2 = HMAC-SHA512(s2, canonical_json(payload))`
-- combined signature = `sig1 || sig2` (concatenated bytes, then base64)
-
-Verification recomputes both parts and compares against the combined
-signature.
-
-Production expectation:
-
-- Replace `sig1` with a classical scheme (e.g. ECDSA) or keep HMAC in
-  closed / trusted environments.
-- Replace `sig2` with a real PQC signature (e.g. ML‑DSA).
-- Maintain the “two‑part signature” pattern so verifiers can require:
-  - *both* parts valid (strict hybrid), or
-  - *at least one* part valid (migration mode).
+With real backend selected:
+- Real PQC signatures are generated via `liboqs`
+- Verification uses the same backend
+- Any mismatch or error ⇒ verification fails
 
 ---
 
-## 5. Migration strategy
+### 4.2 Hybrid algorithm (`pqc-hybrid-ml-dsa-falcon`)
 
-Because all backends share the same interface, migration can happen in
-layers:
+Hybrid mode has **strict additional rules**.
 
-1. **Prototype phase (today)**  
-   - wallets and servers use `DEV_ALGO` or the PQC stub algorithms
-   - focus on UX, QR formats, API flows and integration with Adamantine
+When `QID_PQC_BACKEND=liboqs`:
+- Both ML-DSA and Falcon signatures are required
+- A **Hybrid Key Container v1** must be supplied
+- The container binds both public keys deterministically
+- Missing container ⇒ signing fails immediately
 
-2. **PQC adoption phase**  
-   - plug in real ML‑DSA / Falcon implementations behind the same
-     functions
-   - keep algorithm identifiers stable
+When stub mode is active:
+- Hybrid signatures are simulated deterministically
+- No container is required
+- Behavior remains CI-safe
 
-3. **Hybrid / hardening phase**  
-   - introduce stricter validation rules
-   - allow policies such as:
-     - “only accept `HYBRID_ALGO` after block height X”
-     - “reject `DEV_ALGO` for internet‑facing services”
+This distinction is **intentional and contract-aligned**.
 
 ---
 
-## 6. What is *not* frozen yet
+## 5. No silent fallback guarantee
 
-The following pieces are intentionally flexible and MAY change when
-real PQC libraries are wired in:
+Q-ID enforces a **no silent fallback** rule:
 
-- exact key sizes
-- internal key and signature encoding formats
-- how public keys map to on‑chain identities or DigiByte addresses
+- If a real backend is selected, stub behavior is forbidden
+- If the backend is misconfigured, errors are explicit
+- Callers may catch errors and fail-closed, but must not ignore them
 
-The following ARE treated as stable contracts:
-
-- algorithm identifiers (`DEV_ALGO`, `ML_DSA_ALGO`, `FALCON_ALGO`,
-  `HYBRID_ALGO`)
-- function signatures and their high‑level behaviour
-- the expectation that signatures are base64‑encoded opaque strings
+This prevents accidental downgrade from PQC to non-PQC behavior.
 
 ---
 
-## 7. Summary
+## 6. Error handling expectations
 
-- **Today:** everything runs on pure‑Python HMAC so Q-ID is easy to build,
-  test and demo anywhere.
-- **Tomorrow:** DigiByte Core can swap in real PQC and hybrid schemes
-  without breaking wallets or servers that implement the current API.
-- This document serves as the bridge between the **reference
-  implementation** and a future **production‑grade** Q-ID crypto stack.
+Lower-level crypto functions may raise:
+- `ValueError`
+- `TypeError`
+- `PQCBackendError`
+
+Higher-level protocol helpers:
+- may catch **expected** errors
+- must fail-closed (e.g. return unverifiable messages)
+- must not convert errors into success
+
+---
+
+## 7. Relationship to contracts
+
+This document explains *how* backends are selected.
+
+The following documents define *what must be signed and verified*:
+- `docs/CONTRACTS/crypto_envelope_v1.md`
+- `docs/CONTRACTS/hybrid_key_container_v1.md`
+
+Always consult contracts before modifying backend behavior.
+
+---
+
+## License
+
+MIT — Copyright (c) 2025 **DarekDGB**
