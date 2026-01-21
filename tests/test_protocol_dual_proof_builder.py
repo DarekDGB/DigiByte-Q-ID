@@ -1,27 +1,15 @@
 from __future__ import annotations
 
-import os
-
 import qid.protocol as pr
 import qid.pqc_sign as ps
 from qid.crypto import DEV_ALGO, generate_keypair
 from qid.pqc_backends import ML_DSA_ALGO
 
 
-def _set_env(value: str | None) -> None:
-    if value is None:
-        os.environ.pop("QID_PQC_BACKEND", None)
-    else:
-        os.environ["QID_PQC_BACKEND"] = value
-
-
 def test_build_dual_proof_login_response_stubs_pqc_and_signs_legacy() -> None:
-    old = os.environ.get("QID_PQC_BACKEND")
     orig_sign = ps.sign_pqc_login_fields
     try:
-        _set_env("liboqs")
-
-        # Stub PQC signer: just attaches deterministic fields
+        # Stub PQC signer: attaches deterministic fields without requiring oqs
         def stub(payload, *, pqc_alg, ml_dsa_keypair=None, falcon_keypair=None):
             payload["pqc_alg"] = pqc_alg
             payload["pqc_sig"] = "aa"
@@ -51,4 +39,3 @@ def test_build_dual_proof_login_response_stubs_pqc_and_signs_legacy() -> None:
 
     finally:
         ps.sign_pqc_login_fields = orig_sign  # type: ignore[assignment]
-        _set_env(old)
