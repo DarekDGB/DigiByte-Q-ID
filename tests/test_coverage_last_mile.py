@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import os
 
-from qid.binding import (
-    build_binding_payload,
-    verify_binding,
-)
+from qid.binding import build_binding_payload, verify_binding
 from qid.crypto import generate_keypair
 from qid import pqc_backends
 from qid.qr_payloads import build_qr_payload, parse_qr_payload
@@ -21,7 +18,6 @@ def test_verify_binding_rejects_non_mapping_and_bad_shapes() -> None:
     assert verify_binding("not-a-mapping", kp, expected_domain="example.com") is False  # type: ignore[arg-type]
     assert verify_binding({}, kp, expected_domain="example.com") is False
 
-    # Missing required keys
     env = {"payload": {}, "sig": "x", "binding_id": "y"}
     assert verify_binding(env, kp, expected_domain="example.com") is False
 
@@ -35,14 +31,13 @@ def test_verify_binding_expiry_branch_with_now_default() -> None:
         ml_dsa_pub_b64u=None,
         falcon_pub_b64u="fa",
         created_at=100,
-        expires_at=1,  # already expired
+        expires_at=1,
     )
     env = {
         "payload": payload,
-        "sig": "bad",  # force signature fail-closed even if expiry check passes
+        "sig": "bad",
         "binding_id": "bad",
     }
-    # now=None forces internal time.time() branch
     assert verify_binding(env, kp, expected_domain="example.com", now=None) is False
 
 
@@ -78,9 +73,6 @@ def test_pqc_validate_oqs_module_rejects_invalid() -> None:
 
 
 def test_pqc_verify_fail_closed_on_internal_exception() -> None:
-    # We can't import oqs in CI, but we can test the fail-closed logic by forcing
-    # an exception after oqs is "imported" via monkeypatching _import_oqs.
-
     class DummySig:
         def __init__(self, alg: str):
             self.alg = alg
@@ -100,21 +92,22 @@ def test_pqc_verify_fail_closed_on_internal_exception() -> None:
     old_import = pqc_backends._import_oqs
     try:
         pqc_backends._import_oqs = lambda: DummyOQS()  # type: ignore[assignment]
-        # Forcing verify path; should return False (fail-closed)
-        ok = pqc_backends.liboqs_verify(
-            pqc_backends.ML_DSA_ALGO, b"m", b"s", b"p"
-        )
+        ok = pqc_backends.liboqs_verify(pqc_backends.ML_DSA_ALGO, b"m", b"s", b"p")
         assert ok is False
     finally:
         pqc_backends._import_oqs = old_import  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
-# qr_payloads.py: cover remaining lines
+# qr_payloads.py: cover remaining lines (API takes a single dict argument)
 # ---------------------------------------------------------------------------
 
 def test_qr_payload_roundtrip() -> None:
-    payload = build_qr_payload("login_request", {"service_id": "s", "nonce": "n"})
+    raw = {
+        "type": "login_request",
+        "data": {"service_id": "s", "nonce": "n"},
+    }
+    payload = build_qr_payload(raw)
     parsed = parse_qr_payload(payload)
     assert parsed["type"] == "login_request"
     assert parsed["data"]["service_id"] == "s"
