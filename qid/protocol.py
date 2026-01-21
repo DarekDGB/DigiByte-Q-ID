@@ -204,7 +204,10 @@ def server_verify_login_response(
       Optional deterministic time override:
         request_payload["_now"] = int
 
-    This keeps public signatures stable (API contract test) while enabling binding enforcement.
+    PQC enforcement (Phase 4):
+    - For require="dual-proof", after binding verification succeeds, server MUST verify PQC
+      signatures over the full login response payload.
+    - CI-safe default: if PQC backend is not selected/available, PQC verification fails-closed.
     """
     try:
         if response_payload.get("type") != "login_response":
@@ -220,7 +223,7 @@ def server_verify_login_response(
         if resp_mode != req_mode:
             return False
 
-        # 🔐 Binding enforcement (Path B)
+        # 🔐 Binding + PQC enforcement (Path B)
         if resp_mode == REQUIRE_DUAL_PROOF:
             binding_id = response_payload.get("binding_id")
             if not isinstance(binding_id, str):
@@ -244,6 +247,12 @@ def server_verify_login_response(
                 expected_domain=str(request_payload.get("service_id", "")),
                 now=now,
             ):
+                return False
+
+            # Enforce PQC login signature(s) (fail-closed).
+            from .pqc_verify import verify_pqc_login
+
+            if not verify_pqc_login(login_payload=response_payload, binding_env=binding_env):
                 return False
 
         return verify_login_response(
