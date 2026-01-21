@@ -1,8 +1,21 @@
 from __future__ import annotations
 
+"""
+PQC verification for DigiByte Q-ID dual-proof logins.
+
+Contract:
+- Only used when protocol require="dual-proof".
+- Fail-closed:
+  - If no backend selected => False.
+  - If backend selected but unavailable/misconfigured => False.
+  - If payload missing required fields => False.
+- No silent fallback:
+  - If a real backend is selected, PQC algs MUST NOT degrade silently.
+"""
+
 import base64
 import json
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Mapping
 
 from .pqc_backends import (
     ML_DSA_ALGO,
@@ -14,22 +27,28 @@ from .pqc_backends import (
     selected_backend,
 )
 
+
 def _b64url_decode(s: str) -> bytes:
     pad = "=" * (-len(s) % 4)
     return base64.urlsafe_b64decode((s + pad).encode("ascii"))
 
+
 def canonical_payload_bytes(payload: Mapping[str, Any]) -> bytes:
+    # Deterministic canonicalization (stable keys, no whitespace)
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
-def _decode_pubkey(b64u: str) -> bytes:
+
+def _decode_pubkey(b64u: Any) -> bytes:
     if not isinstance(b64u, str) or not b64u:
         raise ValueError("missing PQC pubkey")
     return _b64url_decode(b64u)
 
-def _decode_sig(b64u: str) -> bytes:
+
+def _decode_sig(b64u: Any) -> bytes:
     if not isinstance(b64u, str) or not b64u:
         raise ValueError("missing PQC signature")
     return _b64url_decode(b64u)
+
 
 def verify_pqc_login(
     *,
@@ -48,7 +67,6 @@ def verify_pqc_login(
         if backend is None:
             return False
 
-        # Pull binding payload
         b_payload = binding_env.get("payload")
         if not isinstance(b_payload, Mapping):
             return False
@@ -60,11 +78,9 @@ def verify_pqc_login(
 
         msg = canonical_payload_bytes(login_payload)
 
-        # Determine algorithm requested by login payload
         alg = login_payload.get("pqc_alg")
         if not isinstance(alg, str):
             return False
-
         if alg not in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
             return False
 
@@ -74,24 +90,24 @@ def verify_pqc_login(
         if alg == ML_DSA_ALGO:
             if policy not in {"ml-dsa", "hybrid"}:
                 return False
-            pub = _decode_pubkey(pqc_keys.get("ml_dsa"))  # type: ignore[arg-type]
-            sig = _decode_sig(login_payload.get("pqc_sig"))  # type: ignore[arg-type]
+            pub = _decode_pubkey(pqc_keys.get("ml_dsa"))
+            sig = _decode_sig(login_payload.get("pqc_sig"))
             return bool(liboqs_verify(ML_DSA_ALGO, msg, sig, pub))
 
         if alg == FALCON_ALGO:
             if policy not in {"falcon", "hybrid"}:
                 return False
-            pub = _decode_pubkey(pqc_keys.get("falcon"))  # type: ignore[arg-type]
-            sig = _decode_sig(login_payload.get("pqc_sig"))  # type: ignore[arg-type]
+            pub = _decode_pubkey(pqc_keys.get("falcon"))
+            sig = _decode_sig(login_payload.get("pqc_sig"))
             return bool(liboqs_verify(FALCON_ALGO, msg, sig, pub))
 
         # HYBRID strict AND
         if policy != "hybrid":
             return False
-        pub_ml = _decode_pubkey(pqc_keys.get("ml_dsa"))  # type: ignore[arg-type]
-        pub_fa = _decode_pubkey(pqc_keys.get("falcon"))  # type: ignore[arg-type]
-        sig_ml = _decode_sig(login_payload.get("pqc_sig_ml_dsa"))  # type: ignore[arg-type]
-        sig_fa = _decode_sig(login_payload.get("pqc_sig_falcon"))  # type: ignore[arg-type]
+        pub_ml = _decode_pubkey(pqc_keys.get("ml_dsa"))
+        pub_fa = _decode_pubkey(pqc_keys.get("falcon"))
+        sig_ml = _decode_sig(login_payload.get("pqc_sig_ml_dsa"))
+        sig_fa = _decode_sig(login_payload.get("pqc_sig_falcon"))
 
         return bool(
             liboqs_verify(ML_DSA_ALGO, msg, sig_ml, pub_ml)
