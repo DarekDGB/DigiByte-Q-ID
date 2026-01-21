@@ -11,6 +11,9 @@ Contract:
   - If payload missing required fields => False.
 - No silent fallback:
   - If a real backend is selected, PQC algs MUST NOT degrade silently.
+
+Signing/verification input:
+- PQC signatures cover the login payload with PQC signature fields removed (non-circular).
 """
 
 import base64
@@ -27,6 +30,8 @@ from .pqc_backends import (
     selected_backend,
 )
 
+_SIG_FIELDS = {"pqc_sig", "pqc_sig_ml_dsa", "pqc_sig_falcon"}
+
 
 def _b64url_decode(s: str) -> bytes:
     pad = "=" * (-len(s) % 4)
@@ -36,6 +41,14 @@ def _b64url_decode(s: str) -> bytes:
 def canonical_payload_bytes(payload: Mapping[str, Any]) -> bytes:
     # Deterministic canonicalization (stable keys, no whitespace)
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def _payload_for_pqc(login_payload: Mapping[str, Any]) -> dict[str, Any]:
+    # Copy and remove signature fields (non-circular signing)
+    d = dict(login_payload)
+    for k in _SIG_FIELDS:
+        d.pop(k, None)
+    return d
 
 
 def _decode_pubkey(b64u: Any) -> bytes:
@@ -76,8 +89,7 @@ def verify_pqc_login(
         if not isinstance(policy, str) or not isinstance(pqc_keys, Mapping):
             return False
 
-        msg = canonical_payload_bytes(login_payload)
-
+        # Determine algorithm requested by login payload
         alg = login_payload.get("pqc_alg")
         if not isinstance(alg, str):
             return False
@@ -86,6 +98,8 @@ def verify_pqc_login(
 
         # Enforce "no silent fallback" for PQC algs when backend selected
         enforce_no_silent_fallback_for_alg(alg)
+
+        msg = canonical_payload_bytes(_payload_for_pqc(login_payload))
 
         if alg == ML_DSA_ALGO:
             if policy not in {"ml-dsa", "hybrid"}:
