@@ -31,6 +31,26 @@ from .uri_scheme import (
 )
 
 # ---------------------------------------------------------------------------
+# Require modes (v1)
+# ---------------------------------------------------------------------------
+
+REQUIRE_LEGACY = "legacy"
+REQUIRE_DUAL_PROOF = "dual-proof"
+_ALLOWED_REQUIRE = {REQUIRE_LEGACY, REQUIRE_DUAL_PROOF}
+
+
+def _require_from_payload(p: Dict[str, Any]) -> str:
+    """Extract and validate 'require' mode from payload. Defaults to legacy."""
+    r = p.get("require", REQUIRE_LEGACY)
+    if not isinstance(r, str):
+        raise ValueError("'require' must be a string if present")
+    r = r.strip().lower()
+    if r not in _ALLOWED_REQUIRE:
+        raise ValueError("'require' must be 'legacy' or 'dual-proof'")
+    return r
+
+
+# ---------------------------------------------------------------------------
 # SignedMessage wrapper (used by tests)
 # ---------------------------------------------------------------------------
 
@@ -96,6 +116,10 @@ def build_login_request_payload(
         "service_id": service_id,
         "nonce": nonce,
         "callback_url": callback_url,
+        # Compatibility contract:
+        # - Missing or legacy => Digi-ID compatible verification.
+        # - dual-proof => verifier MUST enforce ECDSA + PQC (later layers).
+        "require": REQUIRE_LEGACY,
         "version": version,
     }
 
@@ -122,12 +146,16 @@ def build_login_response_payload(
     if not isinstance(nonce, str) or not nonce:
         raise ValueError("Login request payload must contain non-empty 'nonce'.")
 
+    # Validate require mode if present (fail-closed). Default is legacy.
+    require_mode = _require_from_payload(request_payload)
+
     payload: Dict[str, Any] = {
         "type": "login_response",
         "service_id": service_id,
         "nonce": nonce,
         "address": address,
         "pubkey": pubkey,
+        "require": require_mode,
         "version": version,
     }
     if key_id is not None:
@@ -168,6 +196,16 @@ def server_verify_login_response(
         return False
     if response_payload.get("nonce") != request_payload.get("nonce"):
         return False
+
+    # If require mode is present (or implicit), it MUST match.
+    try:
+        req_mode = _require_from_payload(request_payload)
+        resp_mode = _require_from_payload(response_payload)
+    except ValueError:
+        return False
+    if resp_mode != req_mode:
+        return False
+
     return verify_login_response(
         response_payload,
         signature,
@@ -261,17 +299,12 @@ def register_identity(
     version: str = "1",
     hybrid_container_b64: Optional[str] = None,
 ) -> SignedMessage:
-    """
-    Convenience wrapper: build a registration payload and sign it.
-
-    Strict-only (no legacy placeholder mode).
-    """
     if not isinstance(service_id, str):
         raise TypeError("register_identity(): service_id must be a str.")
+    if not all(isinstance(x, str) for x in [address, pubkey, nonce, callback_url]):
+        raise TypeError("register_identity(): address/pubkey/nonce/callback_url must be str.")
     if keypair is None:
         raise TypeError("register_identity(): keypair must be provided.")
-    if address is None or pubkey is None or nonce is None or callback_url is None:
-        raise TypeError("register_identity(): missing required registration arguments.")
 
     payload = build_registration_payload(
         service_id=service_id,
