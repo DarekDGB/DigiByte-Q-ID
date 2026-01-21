@@ -1,3 +1,4 @@
+# qid/crypto.py
 """
 Crypto helpers for DigiByte Q-ID.
 
@@ -135,8 +136,6 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
 
     IMPORTANT: This function never imports oqs and never requires QID_PQC_BACKEND.
     Real backend enforcement happens at sign/verify time.
-
-    API surface contract v0.1 locks argument name to `alg`.
     """
     if alg not in _ALLOWED_ALGOS:
         raise ValueError(f"Unknown Q-ID algorithm: {alg!r}")
@@ -154,31 +153,7 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
     return QIDKeyPair(algorithm=norm, secret_key=_b64encode(secret), public_key=_b64encode(pub))
 
 
-def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair) -> str:
-    """
-    Contract-locked public API: (payload, keypair) and NO kw-only args.
-    Hybrid container support is intentionally NOT exposed here.
-    """
-    return _sign_payload_internal(payload, keypair, hybrid_container_b64=None)
-
-
-def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair) -> bool:
-    """
-    Contract-locked public API: (payload, signature, keypair) and NO kw-only args.
-    Hybrid container support is intentionally NOT exposed here.
-    """
-    return _verify_payload_internal(payload, signature, keypair, hybrid_container_b64=None)
-
-
-# ---------------- Internal (non-contract) helpers ----------------
-
-
-def _sign_payload_internal(
-    payload: Dict[str, Any],
-    keypair: QIDKeyPair,
-    *,
-    hybrid_container_b64: Optional[str],
-) -> str:
+def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_container_b64: Optional[str] = None) -> str:
     from qid.pqc_backends import PQCBackendError, enforce_no_silent_fallback_for_alg, liboqs_sign, selected_backend
     from qid.hybrid_key_container import try_decode_container
 
@@ -198,7 +173,6 @@ def _sign_payload_internal(
             sig = liboqs_sign(alg, msg, sec)
             return _envelope_encode({"v": _SIG_ENVELOPE_VERSION, "alg": alg, "sig": _b64encode(sig)})
 
-        # HYBRID with real backend requires explicit container -> fail closed.
         if hybrid_container_b64 is None:
             raise PQCBackendError("Hybrid signing requires hybrid_container_b64 when QID_PQC_BACKEND is selected")
 
@@ -237,20 +211,12 @@ def _sign_payload_internal(
 
     if alg == HYBRID_ALGO:
         sigs = _stub_sign_hybrid(msg, secret)
-        return _envelope_encode(
-            {"v": _SIG_ENVELOPE_VERSION, "alg": HYBRID_ALGO, "sigs": {k: _b64encode(v) for k, v in sigs.items()}}
-        )
+        return _envelope_encode({"v": _SIG_ENVELOPE_VERSION, "alg": HYBRID_ALGO, "sigs": {k: _b64encode(v) for k, v in sigs.items()}})
 
     raise ValueError(f"Unsupported algorithm for signing: {keypair.algorithm!r}")
 
 
-def _verify_payload_internal(
-    payload: Dict[str, Any],
-    signature: str,
-    keypair: QIDKeyPair,
-    *,
-    hybrid_container_b64: Optional[str],
-) -> bool:
+def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair, *, hybrid_container_b64: Optional[str] = None) -> bool:
     from qid.pqc_backends import PQCBackendError, enforce_no_silent_fallback_for_alg, liboqs_verify, selected_backend
     from qid.hybrid_key_container import try_decode_container
 
@@ -277,7 +243,7 @@ def _verify_payload_internal(
                 pub = _b64decode(keypair.public_key)
                 return liboqs_verify(alg, msg, sig, pub)
 
-            # HYBRID with real backend requires explicit container -> fail closed.
+            # Hybrid verify requires container (contract-locked)
             if hybrid_container_b64 is None:
                 return False
             container = try_decode_container(hybrid_container_b64)
