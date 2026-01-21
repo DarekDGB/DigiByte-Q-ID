@@ -56,7 +56,7 @@ def test_binding_rejects_domain_mismatch() -> None:
 
 def test_binding_rejects_missing_payload() -> None:
     kp = generate_keypair(DEV_ALGO)
-    env = {"binding_id": "x", "payload": None, "signature": "s", "algorithm": kp.algorithm}
+    env = {"binding_id": "x", "payload": None, "sig": "s", "algorithm": kp.algorithm}
     assert verify_binding(env, kp, expected_domain="example.com", now=10) is False
 
 
@@ -73,9 +73,9 @@ def test_binding_rejects_missing_signature_fields() -> None:
     )
     env = sign_binding(payload, kp)
 
-    # Remove signature -> reject
+    # Remove real signature -> reject
     env2 = dict(env)
-    env2.pop("signature", None)
+    env2.pop("sig", None)
     assert verify_binding(env2, kp, expected_domain="example.com", now=11) is False
 
 
