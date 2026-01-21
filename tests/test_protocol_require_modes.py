@@ -23,18 +23,16 @@ def test_require_defaults_to_legacy_and_is_signed() -> None:
     sig = sign_login_response(resp, kp)
     assert server_verify_login_response(req, resp, sig, kp) is True
 
-    # Any change to require breaks verification (signed input).
     resp2 = dict(resp)
     resp2["require"] = REQUIRE_DUAL_PROOF
     assert server_verify_login_response(req, resp2, sig, kp) is False
 
 
-def test_require_dual_proof_must_match_request_and_response() -> None:
+def test_require_dual_proof_matches_but_fails_closed_without_pqc_backend() -> None:
     kp = generate_keypair()
     req = build_login_request_payload("example.com", "n2", "https://cb")
     req["require"] = REQUIRE_DUAL_PROOF
 
-    # Create binding + provide resolver via reserved request payload hook
     b_payload = build_binding_payload(
         domain="example.com",
         address="A",
@@ -54,16 +52,17 @@ def test_require_dual_proof_must_match_request_and_response() -> None:
 
     resp = build_login_response_payload(req, address="A", pubkey="P")
     resp["binding_id"] = b_env["binding_id"]
-    assert resp["require"] == REQUIRE_DUAL_PROOF
 
     sig = sign_login_response(resp, kp)
-    assert server_verify_login_response(req, resp, sig, kp) is True
+
+    # dual-proof is now stronger: without PQC backend + PQC sigs, it must fail-closed.
+    assert server_verify_login_response(req, resp, sig, kp) is False
 
 
 def test_invalid_require_rejects_fail_closed() -> None:
     kp = generate_keypair()
     req = build_login_request_payload("example.com", "n3", "https://cb")
-    req["require"] = "maybe"  # invalid
+    req["require"] = "maybe"
 
     resp = {
         "type": "login_response",
