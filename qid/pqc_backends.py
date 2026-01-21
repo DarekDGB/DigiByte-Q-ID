@@ -27,8 +27,8 @@ class PQCBackendError(RuntimeError):
 # Map Q-ID alg identifiers to liboqs algorithm names.
 # (Exact mapping can be adjusted later, but tests only require support gating.)
 _OQS_ALG_BY_QID = {
-    ML_DSA_ALGO: "Dilithium2",  # placeholder mapping
-    FALCON_ALGO: "Falcon-512",  # placeholder mapping
+    ML_DSA_ALGO: "Dilithium2",  # ML-DSA family mapping (via liboqs Dilithium*)
+    FALCON_ALGO: "Falcon-512",
 }
 
 
@@ -131,9 +131,19 @@ def liboqs_sign(qid_alg: str, msg: bytes, priv: bytes) -> bytes:
     _validate_oqs_module(oqs)
 
     try:
-        with oqs.Signature(oqs_alg) as signer:
-            # python-oqs uses signer.sign(message, secret_key_bytes)
-            return signer.sign(msg, priv)
+        if qid_alg == ML_DSA_ALGO:
+            from qid.pqc.pqc_ml_dsa import sign_ml_dsa
+
+            return sign_ml_dsa(oqs=oqs, msg=msg, priv=priv, oqs_alg=oqs_alg)
+
+        if qid_alg == FALCON_ALGO:
+            from qid.pqc.pqc_falcon import sign_falcon
+
+            return sign_falcon(oqs=oqs, msg=msg, priv=priv, oqs_alg=oqs_alg)
+
+        # HYBRID is signed in qid.crypto by calling liboqs_sign twice (strict AND envelope).
+        raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
+
     except TypeError as e:
         # Tests explicitly hit this branch.
         raise PQCBackendError("liboqs signing failed (Signature ctor rejected inputs)") from e
@@ -157,8 +167,18 @@ def liboqs_verify(qid_alg: str, msg: bytes, sig: bytes, pub: bytes) -> bool:
     _validate_oqs_module(oqs)
 
     try:
-        with oqs.Signature(oqs_alg) as verifier:
-            return bool(verifier.verify(msg, sig, pub))
+        if qid_alg == ML_DSA_ALGO:
+            from qid.pqc.pqc_ml_dsa import verify_ml_dsa
+
+            return bool(verify_ml_dsa(oqs=oqs, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg))
+
+        if qid_alg == FALCON_ALGO:
+            from qid.pqc.pqc_falcon import verify_falcon
+
+            return bool(verify_falcon(oqs=oqs, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg))
+
+        raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
+
     except (ValueError, PQCBackendError):
         # Preserve strict errors for tests / callers.
         raise
