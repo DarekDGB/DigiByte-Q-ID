@@ -36,5 +36,5 @@ show_missing = true
 skip_covered = false
 fail_under = 90
 
-[tool.setuptools]
-packages = ["qid"]
+[tool.setuptools.packages.find]
+include = ["qid*"]
