@@ -99,3 +99,47 @@ def test_generate_ml_dsa_keypair_raises_when_backend_ops_fail(monkeypatch: pytes
     # We only force execution into lines 55-63.
     with pytest.raises(Exception):
         kg.generate_ml_dsa_keypair("ML-DSA-44")
+
+def test_generate_falcon_keypair_success_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
+
+    class FakeSig:
+        def __init__(self, alg: str):
+            self.alg = alg
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc, tb):
+            return False
+        def generate_keypair(self):
+            return b"FALCON_PUB"
+        def export_secret_key(self):
+            return b"FALCON_SEC"
+
+    import types
+    monkeypatch.setattr(kg, "oqs", types.SimpleNamespace(Signature=FakeSig))
+
+    pub, sec = kg.generate_falcon_keypair("Falcon-512")
+    assert pub == b"FALCON_PUB"
+    assert sec == b"FALCON_SEC"
+
+
+def test_generate_falcon_keypair_rejects_unknown_algorithm(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
+
+    class FakeSig:
+        def __init__(self, alg: str):
+            self.alg = alg
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc, tb):
+            return False
+        def generate_keypair(self):
+            return b"X"
+        def export_secret_key(self):
+            return b"Y"
+
+    import types
+    monkeypatch.setattr(kg, "oqs", types.SimpleNamespace(Signature=FakeSig))
+
+    with pytest.raises(kg.PQCAlgorithmError):
+        kg.generate_falcon_keypair("Falcon-999")
