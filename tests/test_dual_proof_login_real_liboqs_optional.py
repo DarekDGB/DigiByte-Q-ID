@@ -4,7 +4,8 @@ import os
 import pytest
 
 from qid.binding import build_binding_payload, sign_binding
-from qid.crypto import DEV_ALGO, ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO, generate_keypair
+from qid.crypto import DEV_ALGO, HYBRID_ALGO, generate_keypair
+from qid.pqc.keygen_liboqs import generate_falcon_keypair, generate_ml_dsa_keypair
 from qid.pqc_sign import sign_pqc_login_fields
 from qid.protocol import (
     REQUIRE_DUAL_PROOF,
@@ -29,14 +30,15 @@ def test_dual_proof_login_real_liboqs_ml_dsa_roundtrip() -> None:
     os.environ["QID_PQC_BACKEND"] = "liboqs"
 
     kp_dev = generate_keypair(DEV_ALGO)
-    kp_ml = generate_keypair(ML_DSA_ALGO)
+    ml_pub, ml_sec = generate_ml_dsa_keypair("ML-DSA-44")
+    kp_ml = {"alg": "ML-DSA-44", "public_key": ml_pub, "secret_key": ml_sec}
 
     # Binding with ML-DSA pubkey
     b_payload = build_binding_payload(
         domain="example.com",
         address="ADDR",
         policy="ml-dsa",
-        ml_dsa_pub_b64u=kp_ml.public_key,
+        ml_dsa_pub_b64u=kp_ml["public_key"],
         falcon_pub_b64u=None,
         created_at=100,
         expires_at=None,
@@ -55,7 +57,7 @@ def test_dual_proof_login_real_liboqs_ml_dsa_roundtrip() -> None:
     resp["binding_id"] = b_env["binding_id"]
 
     # Client adds PQC fields + PQC signature
-    sign_pqc_login_fields(resp, pqc_alg=ML_DSA_ALGO, ml_dsa_keypair=kp_ml)
+    sign_pqc_login_fields(resp, pqc_alg="ML-DSA-44", ml_dsa_keypair=kp_ml)
 
     # Legacy signature still required
     sig = sign_login_response(resp, kp_dev)
@@ -69,14 +71,15 @@ def test_dual_proof_login_real_liboqs_falcon_roundtrip() -> None:
     os.environ["QID_PQC_BACKEND"] = "liboqs"
 
     kp_dev = generate_keypair(DEV_ALGO)
-    kp_fa = generate_keypair(FALCON_ALGO)
+    fa_pub, fa_sec = generate_falcon_keypair("Falcon-512")
+    kp_fa = {"alg": "Falcon-512", "public_key": fa_pub, "secret_key": fa_sec}
 
     b_payload = build_binding_payload(
         domain="example.com",
         address="ADDR",
         policy="falcon",
         ml_dsa_pub_b64u=None,
-        falcon_pub_b64u=kp_fa.public_key,
+        falcon_pub_b64u=kp_fa["public_key"],
         created_at=100,
         expires_at=None,
     )
@@ -93,7 +96,7 @@ def test_dual_proof_login_real_liboqs_falcon_roundtrip() -> None:
     resp = build_login_response_payload(req, address="ADDR", pubkey="PUB")
     resp["binding_id"] = b_env["binding_id"]
 
-    sign_pqc_login_fields(resp, pqc_alg=FALCON_ALGO, falcon_keypair=kp_fa)
+    sign_pqc_login_fields(resp, pqc_alg="Falcon-512", falcon_keypair=kp_fa)
     sig = sign_login_response(resp, kp_dev)
 
     assert server_verify_login_response(req, resp, sig, kp_dev) is True
@@ -105,13 +108,14 @@ def test_dual_proof_login_real_liboqs_tamper_pqc_sig_fails() -> None:
     os.environ["QID_PQC_BACKEND"] = "liboqs"
 
     kp_dev = generate_keypair(DEV_ALGO)
-    kp_ml = generate_keypair(ML_DSA_ALGO)
+    ml_pub, ml_sec = generate_ml_dsa_keypair("ML-DSA-44")
+    kp_ml = {"alg": "ML-DSA-44", "public_key": ml_pub, "secret_key": ml_sec}
 
     b_payload = build_binding_payload(
         domain="example.com",
         address="ADDR",
         policy="ml-dsa",
-        ml_dsa_pub_b64u=kp_ml.public_key,
+        ml_dsa_pub_b64u=kp_ml["public_key"],
         falcon_pub_b64u=None,
         created_at=100,
         expires_at=None,
@@ -129,7 +133,7 @@ def test_dual_proof_login_real_liboqs_tamper_pqc_sig_fails() -> None:
     resp = build_login_response_payload(req, address="ADDR", pubkey="PUB")
     resp["binding_id"] = b_env["binding_id"]
 
-    sign_pqc_login_fields(resp, pqc_alg=ML_DSA_ALGO, ml_dsa_keypair=kp_ml)
+    sign_pqc_login_fields(resp, pqc_alg="ML-DSA-44", ml_dsa_keypair=kp_ml)
 
     # Tamper PQC signature -> must fail dual-proof
     if "pqc_sig" in resp and isinstance(resp["pqc_sig"], str) and resp["pqc_sig"]:
@@ -147,16 +151,19 @@ def test_dual_proof_login_real_liboqs_hybrid_roundtrip() -> None:
     os.environ["QID_PQC_BACKEND"] = "liboqs"
 
     kp_dev = generate_keypair(DEV_ALGO)
-    kp_ml = generate_keypair(ML_DSA_ALGO)
-    kp_fa = generate_keypair(FALCON_ALGO)
+
+    ml_pub, ml_sec = generate_ml_dsa_keypair("ML-DSA-44")
+    fa_pub, fa_sec = generate_falcon_keypair("Falcon-512")
+    kp_ml = {"alg": "ML-DSA-44", "public_key": ml_pub, "secret_key": ml_sec}
+    kp_fa = {"alg": "Falcon-512", "public_key": fa_pub, "secret_key": fa_sec}
 
     # Binding with HYBRID pubkeys
     b_payload = build_binding_payload(
         domain="example.com",
         address="ADDR",
         policy="hybrid",
-        ml_dsa_pub_b64u=kp_ml.public_key,
-        falcon_pub_b64u=kp_fa.public_key,
+        ml_dsa_pub_b64u=kp_ml["public_key"],
+        falcon_pub_b64u=kp_fa["public_key"],
         created_at=100,
         expires_at=None,
     )
