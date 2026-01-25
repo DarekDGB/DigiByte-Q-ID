@@ -92,7 +92,8 @@ def _import_oqs() -> Any:
 
     Determinism contract for tests:
     - if tests monkeypatch `qid.pqc_backends.oqs = None` -> MUST raise PQCBackendError
-    - if oqs hasn't been imported yet -> attempt import (so tests can monkeypatch __import__)
+    - each call MUST execute an `import oqs` statement so tests can monkeypatch __import__
+      and force the failure path, even if oqs was imported earlier in the process.
     - if import fails -> PQCBackendError (WITHOUT exception context for stability)
     """
     global oqs
@@ -103,23 +104,19 @@ def _import_oqs() -> Any:
             "QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available."
         )
 
-    # Cached already.
-    if oqs is not _OQS_UNSET:
-        _validate_oqs_module(oqs)
-        return oqs
-
-    # First import attempt (must be real import statement so monkeypatched __import__ is hit).
+    # Always execute a real import statement so monkeypatched __import__ is hit.
     try:
         import oqs as mod  # type: ignore
     except Exception:
-        # NOTE: from None is important — don't chain ImportError context
-        # (pytest/saferepr + C-extension objects can explode).
+        # IMPORTANT: from None prevents chained ImportError context.
         raise PQCBackendError(
             "QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available. "
             'Install optional deps: pip install -e ".[dev,pqc]"'
         ) from None
 
     _validate_oqs_module(mod)
+
+    # Cache for normal runtime; tests can still force ImportError via monkeypatching __import__.
     oqs = mod
     return mod
 
@@ -201,12 +198,16 @@ def liboqs_verify(qid_alg: str, msg: bytes, sig: bytes, pub: bytes) -> bool:
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import verify_ml_dsa
 
-            return bool(verify_ml_dsa(oqs=mod, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg))
+            return bool(
+                verify_ml_dsa(oqs=mod, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg)
+            )
 
         if qid_alg == FALCON_ALGO:
             from qid.pqc.pqc_falcon import verify_falcon
 
-            return bool(verify_falcon(oqs=mod, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg))
+            return bool(
+                verify_falcon(oqs=mod, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg)
+            )
 
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
