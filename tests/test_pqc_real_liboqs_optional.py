@@ -1,128 +1,130 @@
+from __future__ import annotations
+
+import base64
 import os
+
 import pytest
 
-from qid.crypto import HYBRID_ALGO, generate_keypair, sign_payload, verify_payload
+from qid.crypto import FALCON_ALGO, HYBRID_ALGO, ML_DSA_ALGO, QIDKeyPair, sign_payload, verify_payload
 from qid.hybrid_key_container import build_container, encode_container
 from qid.pqc.keygen_liboqs import generate_falcon_keypair, generate_ml_dsa_keypair
 
 
 def _has_oqs() -> bool:
     try:
-        import oqs  # type: ignore
+        import oqs  # noqa: F401
         return True
     except Exception:
         return False
 
 
+def _b64(b: bytes) -> str:
+    return base64.b64encode(b).decode("ascii")
+
+
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_real_liboqs_ml_dsa_roundtrip() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
+def test_real_liboqs_ml_dsa_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
     pub, sec = generate_ml_dsa_keypair("ML-DSA-44")
+    kp = QIDKeyPair(algorithm=ML_DSA_ALGO, public_key=_b64(pub), secret_key=_b64(sec))
+
     payload = {"x": 1}
-    sig = sign_payload(payload, {"alg": "ML-DSA-44", "public_key": pub, "secret_key": sec})
-    assert verify_payload(payload, sig, {"alg": "ML-DSA-44", "public_key": pub, "secret_key": sec}) is True
+    sig = sign_payload(payload, kp)
+    assert verify_payload(payload, sig, kp) is True
 
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_real_liboqs_ml_dsa_tamper_fails() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
+def test_real_liboqs_ml_dsa_tamper_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
     pub, sec = generate_ml_dsa_keypair("ML-DSA-44")
-    payload = {"x": 10}
-    sig = sign_payload(payload, {"alg": "ML-DSA-44", "public_key": pub, "secret_key": sec})
+    kp = QIDKeyPair(algorithm=ML_DSA_ALGO, public_key=_b64(pub), secret_key=_b64(sec))
 
-    # Tamper payload -> must fail
-    assert verify_payload({"x": 11}, sig, {"alg": "ML-DSA-44", "public_key": pub, "secret_key": sec}) is False
+    payload = {"x": 10}
+    sig = sign_payload(payload, kp)
+
+    assert verify_payload({"x": 11}, sig, kp) is False
 
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_real_liboqs_falcon_roundtrip() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
+def test_real_liboqs_falcon_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
     pub, sec = generate_falcon_keypair("Falcon-512")
+    kp = QIDKeyPair(algorithm=FALCON_ALGO, public_key=_b64(pub), secret_key=_b64(sec))
+
     payload = {"x": 2}
-    sig = sign_payload(payload, {"alg": "Falcon-512", "public_key": pub, "secret_key": sec})
-    assert verify_payload(payload, sig, {"alg": "Falcon-512", "public_key": pub, "secret_key": sec}) is True
+    sig = sign_payload(payload, kp)
+    assert verify_payload(payload, sig, kp) is True
 
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_real_liboqs_falcon_wrong_pubkey_fails() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
+def test_real_liboqs_falcon_wrong_pubkey_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
     pub1, sec1 = generate_falcon_keypair("Falcon-512")
     pub2, _sec2 = generate_falcon_keypair("Falcon-512")
+
+    kp_sign = QIDKeyPair(algorithm=FALCON_ALGO, public_key=_b64(pub1), secret_key=_b64(sec1))
+    kp_verify_wrong = QIDKeyPair(algorithm=FALCON_ALGO, public_key=_b64(pub2), secret_key=_b64(sec1))
+
     payload = {"x": 20}
+    sig = sign_payload(payload, kp_sign)
 
-    sig = sign_payload(payload, {"alg": "Falcon-512", "public_key": pub1, "secret_key": sec1})
-
-    # Wrong public key -> must fail
-    assert verify_payload(payload, sig, {"alg": "Falcon-512", "public_key": pub2, "secret_key": sec1}) is False
+    assert verify_payload(payload, sig, kp_verify_wrong) is False
 
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_real_liboqs_hybrid_roundtrip_with_container() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
+def test_real_liboqs_hybrid_roundtrip_with_container(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
-    # Generate real PQC component keys (real liboqs)
     ml_pub, ml_sec = generate_ml_dsa_keypair("ML-DSA-44")
     fa_pub, fa_sec = generate_falcon_keypair("Falcon-512")
 
-    # Build container with BOTH public keys and BOTH secret keys (for this implementation)
     container = build_container(
         kid="test-kid",
-        ml_dsa_public_key=ml_pub,
-        falcon_public_key=fa_pub,
-        ml_dsa_secret_key=ml_sec,
-        falcon_secret_key=fa_sec,
+        ml_dsa_public_key=_b64(ml_pub),
+        falcon_public_key=_b64(fa_pub),
+        ml_dsa_secret_key=_b64(ml_sec),
+        falcon_secret_key=_b64(fa_sec),
     )
     container_b64 = encode_container(container)
 
-    # Hybrid signing uses container, not the hybrid keypair fields
-    kp_h = generate_keypair(HYBRID_ALGO)
-    payload = {"x": 3}
+    dummy = QIDKeyPair(algorithm=HYBRID_ALGO, public_key=_b64(b"dummy"), secret_key=_b64(b"dummy"))
 
-    sig = sign_payload(payload, kp_h, hybrid_container_b64=container_b64)
-    assert verify_payload(payload, sig, kp_h, hybrid_container_b64=container_b64) is True
+    payload = {"x": 3}
+    sig = sign_payload(payload, dummy, hybrid_container_b64=container_b64)
+
+    assert verify_payload(payload, sig, dummy, hybrid_container_b64=container_b64) is True
 
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_real_liboqs_hybrid_wrong_container_fails() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
+def test_real_liboqs_hybrid_wrong_container_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
     ml_pub, ml_sec = generate_ml_dsa_keypair("ML-DSA-44")
     fa_pub, fa_sec = generate_falcon_keypair("Falcon-512")
 
     container_ok = build_container(
         kid="test-kid",
-        ml_dsa_public_key=ml_pub,
-        falcon_public_key=fa_pub,
-        ml_dsa_secret_key=ml_sec,
-        falcon_secret_key=fa_sec,
+        ml_dsa_public_key=_b64(ml_pub),
+        falcon_public_key=_b64(fa_pub),
+        ml_dsa_secret_key=_b64(ml_sec),
+        falcon_secret_key=_b64(fa_sec),
     )
+    ok_b64 = encode_container(container_ok)
 
-    # Wrong falcon secret key in the container -> must fail
-    _fa_pub2, fa_sec_bad = generate_falcon_keypair("Falcon-512")
-    container_bad = build_container(
-        kid="test-kid",
-        ml_dsa_public_key=ml_pub,
-        falcon_public_key=fa_pub,
-        ml_dsa_secret_key=ml_sec,
-        falcon_secret_key=fa_sec_bad,
-    )
+    bad_b64 = ok_b64[:-1] + ("A" if ok_b64[-1] != "A" else "B")
 
-    b64_ok = encode_container(container_ok)
-    b64_bad = encode_container(container_bad)
+    dummy = QIDKeyPair(algorithm=HYBRID_ALGO, public_key=_b64(b"dummy"), secret_key=_b64(b"dummy"))
+    payload = {"x": 9}
 
-    kp_h = generate_keypair(HYBRID_ALGO)
-    payload = {"x": 30}
-    sig = sign_payload(payload, kp_h, hybrid_container_b64=b64_ok)
-
-    # Wrong container -> must fail
-    assert verify_payload(payload, sig, kp_h, hybrid_container_b64=b64_bad) is False
+    sig = sign_payload(payload, dummy, hybrid_container_b64=ok_b64)
+    assert verify_payload(payload, sig, dummy, hybrid_container_b64=bad_b64) is False
