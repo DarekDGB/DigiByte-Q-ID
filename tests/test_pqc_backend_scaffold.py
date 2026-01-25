@@ -1,6 +1,9 @@
+import importlib.util
 import os
+
 import pytest
 
+import qid.pqc_backends as pb
 from qid.crypto import ML_DSA_ALGO, generate_keypair, sign_payload
 from qid.pqc_backends import PQCBackendError
 
@@ -14,17 +17,21 @@ def test_no_backend_selected_does_not_block_signing() -> None:
 
 def test_backend_selected_fails_closed_until_wired() -> None:
     os.environ["QID_PQC_BACKEND"] = "liboqs"
-    kp = generate_keypair(ML_DSA_ALGO)
-    with pytest.raises(PQCBackendError):
-        sign_payload({"x": 1}, kp)
-    os.environ.pop("QID_PQC_BACKEND", None)
+    try:
+        kp = generate_keypair(ML_DSA_ALGO)
+        has_oqs = importlib.util.find_spec("oqs") is not None
 
-import pytest
-import qid.pqc_backends as pb
+        if os.getenv("QID_PQC_TESTS") == "1" and has_oqs:
+            sig = sign_payload({"x": 1}, kp)
+            assert isinstance(sig, str) and sig
+        else:
+            with pytest.raises(PQCBackendError):
+                sign_payload({"x": 1}, kp)
+    finally:
+        os.environ.pop("QID_PQC_BACKEND", None)
 
 
 def test_import_oqs_failure_path_is_covered(monkeypatch) -> None:
-    # Force import inside _import_oqs() to fail so we cover lines 41-48
     import builtins
 
     real_import = builtins.__import__
@@ -41,7 +48,6 @@ def test_import_oqs_failure_path_is_covered(monkeypatch) -> None:
 
 
 def test_liboqs_not_wired_error_paths_are_covered(monkeypatch) -> None:
-    # Pretend oqs import works so we reach the "not wired yet" raises (lines 68, 79)
     monkeypatch.setattr(pb, "_import_oqs", lambda: object())
 
     with pytest.raises(pb.PQCBackendError):
