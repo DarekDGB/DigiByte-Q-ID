@@ -93,7 +93,7 @@ def _import_oqs() -> Any:
     Determinism contract for tests:
     - if tests monkeypatch `qid.pqc_backends.oqs = None` -> MUST raise PQCBackendError
     - if oqs hasn't been imported yet -> attempt import (so tests can monkeypatch __import__)
-    - if import fails -> PQCBackendError
+    - if import fails -> PQCBackendError (WITHOUT exception context for stability)
     """
     global oqs
 
@@ -105,17 +105,21 @@ def _import_oqs() -> Any:
 
     # Cached already.
     if oqs is not _OQS_UNSET:
+        _validate_oqs_module(oqs)
         return oqs
 
-    # First import attempt.
+    # First import attempt (must be real import statement so monkeypatched __import__ is hit).
     try:
         import oqs as mod  # type: ignore
-    except Exception as e:  # pragma: no cover
+    except Exception:
+        # NOTE: from None is important — don't chain ImportError context
+        # (pytest/saferepr + C-extension objects can explode).
         raise PQCBackendError(
             "QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available. "
             'Install optional deps: pip install -e ".[dev,pqc]"'
-        ) from e
+        ) from None
 
+    _validate_oqs_module(mod)
     oqs = mod
     return mod
 
@@ -150,7 +154,7 @@ def liboqs_sign(qid_alg: str, msg: bytes, priv: bytes) -> bytes:
     Contract:
     - Unsupported alg -> ValueError (before importing oqs)
     - Invalid oqs backend -> PQCBackendError
-    - TypeError in oqs flow -> PQCBackendError (stable message)
+    - Any internal oqs failure -> PQCBackendError (stable message, no leaked context)
     """
     oqs_alg = _oqs_alg_for(qid_alg)  # may raise ValueError
     mod = _import_oqs()
@@ -170,12 +174,14 @@ def liboqs_sign(qid_alg: str, msg: bytes, priv: bytes) -> bytes:
         # Hybrid is composed at a higher layer (strict AND)
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
-    except TypeError as e:
-        raise PQCBackendError("liboqs signing failed (Signature ctor rejected inputs)") from e
+    except TypeError:
+        # Signature ctor / API mismatch
+        raise PQCBackendError("liboqs signing failed (Signature API mismatch)") from None
     except PQCBackendError:
         raise
-    except Exception as e:  # pragma: no cover
-        raise PQCBackendError("liboqs signing failed") from e
+    except Exception:
+        # Clean failure (no exception context)
+        raise PQCBackendError("liboqs signing failed") from None
 
 
 def liboqs_verify(qid_alg: str, msg: bytes, sig: bytes, pub: bytes) -> bool:
