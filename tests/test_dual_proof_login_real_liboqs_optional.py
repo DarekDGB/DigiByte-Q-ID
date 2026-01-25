@@ -1,187 +1,132 @@
 from __future__ import annotations
 
+import base64
 import os
+
 import pytest
 
-from qid.binding import build_binding_payload, sign_binding
-from qid.crypto import DEV_ALGO, HYBRID_ALGO, generate_keypair
+from qid.binding import build_binding_payload
+from qid.crypto import FALCON_ALGO, HYBRID_ALGO, ML_DSA_ALGO
 from qid.pqc.keygen_liboqs import generate_falcon_keypair, generate_ml_dsa_keypair
-from qid.pqc_sign import sign_pqc_login_fields
-from qid.protocol import (
-    REQUIRE_DUAL_PROOF,
-    build_login_request_payload,
-    build_login_response_payload,
-    server_verify_login_response,
-    sign_login_response,
-)
+from qid.pqc_backends import liboqs_sign
+from qid.pqc_verify import canonical_payload_bytes, verify_pqc_login
 
 
 def _has_oqs() -> bool:
     try:
-        import oqs  # type: ignore
+        import oqs  # noqa: F401
         return True
     except Exception:
         return False
 
 
+def _b64u(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).decode("ascii").rstrip("=")
+
+
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_dual_proof_login_real_liboqs_ml_dsa_roundtrip() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
+def test_dual_proof_login_real_liboqs_ml_dsa_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
-    kp_dev = generate_keypair(DEV_ALGO)
     ml_pub, ml_sec = generate_ml_dsa_keypair("ML-DSA-44")
-    kp_ml = {"alg": "ML-DSA-44", "public_key": ml_pub, "secret_key": ml_sec}
 
-    # Binding with ML-DSA pubkey
-    b_payload = build_binding_payload(
+    request = build_binding_payload(
         domain="example.com",
         address="ADDR",
         policy="ml-dsa",
-        ml_dsa_pub_b64u=kp_ml["public_key"],
+        ml_dsa_pub_b64u=_b64u(ml_pub),
         falcon_pub_b64u=None,
         created_at=100,
         expires_at=None,
     )
-    b_env = sign_binding(b_payload, kp_dev)
 
-    def resolver(bid: str):
-        return b_env if bid == b_env["binding_id"] else None
+    msg = canonical_payload_bytes(request)
+    sig = liboqs_sign(ML_DSA_ALGO, msg, ml_sec)
 
-    req = build_login_request_payload("example.com", "n1", "https://cb")
-    req["require"] = REQUIRE_DUAL_PROOF
-    req["_binding_resolver"] = resolver
-    req["_now"] = 101
+    response = {"pqc_payload": request, "pqc_alg": ML_DSA_ALGO, "pqc_sig": _b64u(sig)}
 
-    resp = build_login_response_payload(req, address="ADDR", pubkey="PUB")
-    resp["binding_id"] = b_env["binding_id"]
-
-    # Client adds PQC fields + PQC signature
-    sign_pqc_login_fields(resp, pqc_alg="ML-DSA-44", ml_dsa_keypair=kp_ml)
-
-    # Legacy signature still required
-    sig = sign_login_response(resp, kp_dev)
-
-    assert server_verify_login_response(req, resp, sig, kp_dev) is True
+    assert verify_pqc_login(request, response) is True
 
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_dual_proof_login_real_liboqs_falcon_roundtrip() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
+def test_dual_proof_login_real_liboqs_falcon_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
-    kp_dev = generate_keypair(DEV_ALGO)
     fa_pub, fa_sec = generate_falcon_keypair("Falcon-512")
-    kp_fa = {"alg": "Falcon-512", "public_key": fa_pub, "secret_key": fa_sec}
 
-    b_payload = build_binding_payload(
+    request = build_binding_payload(
         domain="example.com",
         address="ADDR",
         policy="falcon",
         ml_dsa_pub_b64u=None,
-        falcon_pub_b64u=kp_fa["public_key"],
+        falcon_pub_b64u=_b64u(fa_pub),
         created_at=100,
         expires_at=None,
     )
-    b_env = sign_binding(b_payload, kp_dev)
 
-    def resolver(bid: str):
-        return b_env if bid == b_env["binding_id"] else None
+    msg = canonical_payload_bytes(request)
+    sig = liboqs_sign(FALCON_ALGO, msg, fa_sec)
 
-    req = build_login_request_payload("example.com", "nF", "https://cb")
-    req["require"] = REQUIRE_DUAL_PROOF
-    req["_binding_resolver"] = resolver
-    req["_now"] = 101
+    response = {"pqc_payload": request, "pqc_alg": FALCON_ALGO, "pqc_sig": _b64u(sig)}
 
-    resp = build_login_response_payload(req, address="ADDR", pubkey="PUB")
-    resp["binding_id"] = b_env["binding_id"]
-
-    sign_pqc_login_fields(resp, pqc_alg="Falcon-512", falcon_keypair=kp_fa)
-    sig = sign_login_response(resp, kp_dev)
-
-    assert server_verify_login_response(req, resp, sig, kp_dev) is True
+    assert verify_pqc_login(request, response) is True
 
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_dual_proof_login_real_liboqs_tamper_pqc_sig_fails() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
+def test_dual_proof_login_real_liboqs_tamper_pqc_sig_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
-    kp_dev = generate_keypair(DEV_ALGO)
     ml_pub, ml_sec = generate_ml_dsa_keypair("ML-DSA-44")
-    kp_ml = {"alg": "ML-DSA-44", "public_key": ml_pub, "secret_key": ml_sec}
 
-    b_payload = build_binding_payload(
+    request = build_binding_payload(
         domain="example.com",
         address="ADDR",
         policy="ml-dsa",
-        ml_dsa_pub_b64u=kp_ml["public_key"],
+        ml_dsa_pub_b64u=_b64u(ml_pub),
         falcon_pub_b64u=None,
         created_at=100,
         expires_at=None,
     )
-    b_env = sign_binding(b_payload, kp_dev)
 
-    def resolver(bid: str):
-        return b_env if bid == b_env["binding_id"] else None
+    msg = canonical_payload_bytes(request)
+    sig = liboqs_sign(ML_DSA_ALGO, msg, ml_sec)
+    sig_b64u = _b64u(sig)
 
-    req = build_login_request_payload("example.com", "nT", "https://cb")
-    req["require"] = REQUIRE_DUAL_PROOF
-    req["_binding_resolver"] = resolver
-    req["_now"] = 101
+    tampered = sig_b64u[:-1] + ("A" if sig_b64u[-1] != "A" else "B")
+    response = {"pqc_payload": request, "pqc_alg": ML_DSA_ALGO, "pqc_sig": tampered}
 
-    resp = build_login_response_payload(req, address="ADDR", pubkey="PUB")
-    resp["binding_id"] = b_env["binding_id"]
-
-    sign_pqc_login_fields(resp, pqc_alg="ML-DSA-44", ml_dsa_keypair=kp_ml)
-
-    # Tamper PQC signature -> must fail dual-proof
-    if "pqc_sig" in resp and isinstance(resp["pqc_sig"], str) and resp["pqc_sig"]:
-        resp["pqc_sig"] = resp["pqc_sig"][:-1] + ("A" if resp["pqc_sig"][-1] != "A" else "B")
-    else:
-        resp["pqc_sig"] = "AA"  # deterministic bad value
-
-    sig = sign_login_response(resp, kp_dev)
-    assert server_verify_login_response(req, resp, sig, kp_dev) is False
+    assert verify_pqc_login(request, response) is False
 
 
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
-def test_dual_proof_login_real_liboqs_hybrid_roundtrip() -> None:
-    os.environ["QID_PQC_BACKEND"] = "liboqs"
-
-    kp_dev = generate_keypair(DEV_ALGO)
+def test_dual_proof_login_real_liboqs_hybrid_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
 
     ml_pub, ml_sec = generate_ml_dsa_keypair("ML-DSA-44")
     fa_pub, fa_sec = generate_falcon_keypair("Falcon-512")
-    kp_ml = {"alg": "ML-DSA-44", "public_key": ml_pub, "secret_key": ml_sec}
-    kp_fa = {"alg": "Falcon-512", "public_key": fa_pub, "secret_key": fa_sec}
 
-    # Binding with HYBRID pubkeys
-    b_payload = build_binding_payload(
+    request = build_binding_payload(
         domain="example.com",
         address="ADDR",
         policy="hybrid",
-        ml_dsa_pub_b64u=kp_ml["public_key"],
-        falcon_pub_b64u=kp_fa["public_key"],
+        ml_dsa_pub_b64u=_b64u(ml_pub),
+        falcon_pub_b64u=_b64u(fa_pub),
         created_at=100,
         expires_at=None,
     )
-    b_env = sign_binding(b_payload, kp_dev)
 
-    def resolver(bid: str):
-        return b_env if bid == b_env["binding_id"] else None
+    msg = canonical_payload_bytes(request)
+    sig_ml = liboqs_sign(ML_DSA_ALGO, msg, ml_sec)
+    sig_fa = liboqs_sign(FALCON_ALGO, msg, fa_sec)
 
-    req = build_login_request_payload("example.com", "n2", "https://cb")
-    req["require"] = REQUIRE_DUAL_PROOF
-    req["_binding_resolver"] = resolver
-    req["_now"] = 101
+    response = {
+        "pqc_payload": request,
+        "pqc_alg": HYBRID_ALGO,
+        "pqc_sig": {"ml_dsa": _b64u(sig_ml), "falcon": _b64u(sig_fa)},
+    }
 
-    resp = build_login_response_payload(req, address="ADDR", pubkey="PUB")
-    resp["binding_id"] = b_env["binding_id"]
-
-    sign_pqc_login_fields(resp, pqc_alg=HYBRID_ALGO, ml_dsa_keypair=kp_ml, falcon_keypair=kp_fa)
-
-    sig = sign_login_response(resp, kp_dev)
-
-    assert server_verify_login_response(req, resp, sig, kp_dev) is True
+    assert verify_pqc_login(request, response) is True
