@@ -4,9 +4,14 @@ from typing import Any
 
 
 def sign_falcon(*, oqs: Any, msg: bytes, priv: bytes, oqs_alg: str | None = None) -> bytes:
-    alg = oqs_alg or "Falcon-512"
+    """
+    Falcon signing via python-oqs.
 
-    signer = None  # IMPORTANT: del on error to avoid pytest repr segfaults
+    Same safety rules as ML-DSA.
+    """
+    alg = oqs_alg or "Falcon-512"
+    signer = None
+
     try:
         with oqs.Signature(alg) as signer:
             if hasattr(signer, "import_secret_key"):
@@ -34,19 +39,15 @@ def verify_falcon(
     pub: bytes,
     oqs_alg: str | None = None,
 ) -> bool:
+    """
+    Falcon verify — fail closed.
+    """
     alg = oqs_alg or "Falcon-512"
+    verifier = None
 
-    verifier = None  # IMPORTANT: del on error to avoid pytest repr segfaults
     try:
         with oqs.Signature(alg) as verifier:
-            if hasattr(verifier, "import_public_key"):
-                verifier.import_public_key(pub)  # type: ignore[attr-defined]
-                return bool(verifier.verify(msg, sig))
-
-            try:
-                return bool(verifier.verify(msg, sig, pub))
-            except TypeError:
-                return bool(verifier.verify(msg, sig))
+            return bool(verifier.verify(msg, sig, pub))
 
     except Exception:
         try:
