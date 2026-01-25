@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 import os
 
+
 # These constants are also imported by tests.
 ML_DSA_ALGO = "pqc-ml-dsa"
 FALCON_ALGO = "pqc-falcon"
@@ -24,21 +25,53 @@ class PQCBackendError(RuntimeError):
     pass
 
 
-# Cache python-oqs so tests can monkeypatch `qid.pqc_backends.oqs = None`
-# and get deterministic behavior in both normal CI and the PQC Optional workflow.
-try:  # pragma: no cover
-    import oqs as oqs  # type: ignore
-except Exception:  # pragma: no cover
-    oqs = None  # type: ignore
+# ---------------------------------------------------------------------------
+# liboqs import handling (deterministic + test-coverable)
+# ---------------------------------------------------------------------------
+
+_OQS_CACHE: Any | None = None
 
 
-# Map Q-ID alg identifiers to liboqs algorithm names.
-_OQS_ALG_BY_QID = {
-    # NOTE: liboqs-python may expose ML-DSA via Dilithium* names depending on version.
-    ML_DSA_ALGO: "Dilithium2",
-    FALCON_ALGO: "Falcon-512",
-}
+def _import_oqs() -> Any:
+    """
+    Import and cache python-oqs.
 
+    Tests expect:
+    - PQCBackendError when oqs cannot be imported
+    - Deterministic behavior when import is monkeypatched
+    """
+    global _OQS_CACHE
+
+    if _OQS_CACHE is not None:
+        return _OQS_CACHE
+
+    try:
+        import oqs  # type: ignore
+    except Exception as e:
+        raise PQCBackendError(
+            "QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available. "
+            'Install optional deps: pip install "git+https://github.com/open-quantum-safe/liboqs-python.git"'
+        ) from e
+
+    _validate_oqs_module(oqs)
+    _OQS_CACHE = oqs
+    return oqs
+
+
+def _validate_oqs_module(mod: Any) -> None:
+    """
+    Validate that `mod` looks like python-oqs.
+
+    Tests expect PQCBackendError when invalid.
+    """
+    sig = getattr(mod, "Signature", None)
+    if sig is None or not callable(sig):
+        raise PQCBackendError("Invalid oqs backend object: missing callable Signature")
+
+
+# ---------------------------------------------------------------------------
+# Backend selection
+# ---------------------------------------------------------------------------
 
 def selected_backend() -> str | None:
     """
@@ -59,6 +92,16 @@ def require_real_pqc() -> bool:
     return selected_backend() is not None
 
 
+# ---------------------------------------------------------------------------
+# Algorithm mapping
+# ---------------------------------------------------------------------------
+
+_OQS_ALG_BY_QID = {
+    ML_DSA_ALGO: "Dilithium2",
+    FALCON_ALGO: "Falcon-512",
+}
+
+
 def _oqs_alg_for(qid_alg: str) -> str:
     """
     Convert Q-ID alg identifier to liboqs algorithm name.
@@ -71,31 +114,9 @@ def _oqs_alg_for(qid_alg: str) -> str:
     return _OQS_ALG_BY_QID[qid_alg]
 
 
-def _validate_oqs_module(mod: Any) -> None:
-    """
-    Validate that `mod` looks like python-oqs.
-
-    Tests expect PQCBackendError when invalid.
-    """
-    sig = getattr(mod, "Signature", None)
-    if sig is None or not callable(sig):
-        raise PQCBackendError("Invalid oqs backend object: missing callable Signature")
-
-
-def _import_oqs() -> Any:
-    """
-    Return cached python-oqs module.
-
-    Tests expect:
-    - PQCBackendError when oqs is missing (including when tests monkeypatch oqs=None).
-    """
-    if oqs is None:
-        raise PQCBackendError(
-            "QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available. "
-            'Install optional deps: pip install "git+https://github.com/open-quantum-safe/liboqs-python.git"'
-        )
-    return oqs
-
+# ---------------------------------------------------------------------------
+# Guardrail
+# ---------------------------------------------------------------------------
 
 def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
     """
@@ -120,6 +141,10 @@ def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
     _validate_oqs_module(mod)
 
 
+# ---------------------------------------------------------------------------
+# Sign / verify
+# ---------------------------------------------------------------------------
+
 def liboqs_sign(qid_alg: str, msg: bytes, priv: bytes) -> bytes:
     """
     Low-level sign using python-oqs.
@@ -129,7 +154,7 @@ def liboqs_sign(qid_alg: str, msg: bytes, priv: bytes) -> bytes:
     - Invalid oqs backend -> PQCBackendError
     - Signature ctor TypeError -> PQCBackendError
     """
-    oqs_alg = _oqs_alg_for(qid_alg)  # may raise ValueError
+    oqs_alg = _oqs_alg_for(qid_alg)
     mod = _import_oqs()
     _validate_oqs_module(mod)
 
@@ -137,19 +162,29 @@ def liboqs_sign(qid_alg: str, msg: bytes, priv: bytes) -> bytes:
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import sign_ml_dsa
 
-            return sign_ml_dsa(oqs=mod, msg=msg, priv=priv, oqs_alg=oqs_alg)
+            return sign_ml_dsa(
+                oqs=mod,
+                msg=msg,
+                priv=priv,
+                oqs_alg=oqs_alg,
+            )
 
         if qid_alg == FALCON_ALGO:
             from qid.pqc.pqc_falcon import sign_falcon
 
-            return sign_falcon(oqs=mod, msg=msg, priv=priv, oqs_alg=oqs_alg)
+            return sign_falcon(
+                oqs=mod,
+                msg=msg,
+                priv=priv,
+                oqs_alg=oqs_alg,
+            )
 
-        # Hybrid is composed at a higher layer (strict AND)
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
     except TypeError as e:
-        # Keep message stable for tests and callers.
-        raise PQCBackendError("liboqs signing failed (Signature ctor rejected inputs)") from e
+        raise PQCBackendError(
+            "liboqs signing failed (Signature ctor rejected inputs)"
+        ) from e
     except PQCBackendError:
         raise
     except Exception as e:  # pragma: no cover
@@ -173,12 +208,28 @@ def liboqs_verify(qid_alg: str, msg: bytes, sig: bytes, pub: bytes) -> bool:
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import verify_ml_dsa
 
-            return bool(verify_ml_dsa(oqs=mod, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg))
+            return bool(
+                verify_ml_dsa(
+                    oqs=mod,
+                    msg=msg,
+                    sig=sig,
+                    pub=pub,
+                    oqs_alg=oqs_alg,
+                )
+            )
 
         if qid_alg == FALCON_ALGO:
             from qid.pqc.pqc_falcon import verify_falcon
 
-            return bool(verify_falcon(oqs=mod, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg))
+            return bool(
+                verify_falcon(
+                    oqs=mod,
+                    msg=msg,
+                    sig=sig,
+                    pub=pub,
+                    oqs_alg=oqs_alg,
+                )
+            )
 
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
