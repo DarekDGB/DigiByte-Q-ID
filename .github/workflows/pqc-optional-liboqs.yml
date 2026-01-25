@@ -1,9 +1,38 @@
 name: PQC Optional (liboqs real backend)
 
 on:
+  # Manual “Run workflow” button (always available)
   workflow_dispatch:
+
+  # Nightly drift check
   schedule:
     - cron: "0 3 * * *" # daily at 03:00 UTC
+
+  # ✅ Run immediately when PQC-relevant code/tests/config changes
+  push:
+    paths:
+      - "qid/pqc/**"
+      - "qid/crypto.py"
+      - "qid/hybrid_key_container.py"
+      - "qid/pqc_backends.py"
+      - "qid/pqc_sign.py"
+      - "qid/pqc_verify.py"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/**"
+
+  # ✅ Also run on PRs when PQC-relevant changes are proposed
+  pull_request:
+    paths:
+      - "qid/pqc/**"
+      - "qid/crypto.py"
+      - "qid/hybrid_key_container.py"
+      - "qid/pqc_backends.py"
+      - "qid/pqc_sign.py"
+      - "qid/pqc_verify.py"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/**"
 
 jobs:
   pqc-real:
