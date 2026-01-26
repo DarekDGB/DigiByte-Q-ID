@@ -10,7 +10,8 @@ Contract goals:
 
 CI-safe rule:
 - generate_keypair() MUST NOT require oqs/liboqs.
-- Real backend enforcement happens at sign/verify time.
+- Real backend enforcement happens at sign/verify time,
+  and ONLY when explicitly opted-in via QID_PQC_TESTS=1.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import hashlib
 import hmac
 import json
 import secrets
+import os
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
 
@@ -153,7 +155,16 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
     return QIDKeyPair(algorithm=norm, secret_key=_b64encode(secret), public_key=_b64encode(pub))
 
 
-def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_container_b64: Optional[str] = None) -> str:
+def _real_pqc_enabled() -> bool:
+    return os.getenv("QID_PQC_TESTS") == "1"
+
+
+def sign_payload(
+    payload: Dict[str, Any],
+    keypair: QIDKeyPair,
+    *,
+    hybrid_container_b64: Optional[str] = None,
+) -> str:
     from qid.pqc_backends import PQCBackendError, enforce_no_silent_fallback_for_alg, liboqs_sign, selected_backend
     from qid.hybrid_key_container import try_decode_container
 
@@ -164,8 +175,11 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
     msg = _canonical_json(payload)
     backend = selected_backend()
 
+    # -------- REAL PQC PATH (STRICT OPT-IN) --------
     if backend is not None and alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
-        # Real backend selected: enforce no silent fallback at signing time.
+        if not _real_pqc_enabled():
+            raise PQCBackendError("Real PQC backend selected but QID_PQC_TESTS!=1")
+
         enforce_no_silent_fallback_for_alg(alg)
 
         if alg in (ML_DSA_ALGO, FALCON_ALGO):
@@ -174,15 +188,14 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
             return _envelope_encode({"v": _SIG_ENVELOPE_VERSION, "alg": alg, "sig": _b64encode(sig)})
 
         if hybrid_container_b64 is None:
-            raise PQCBackendError("Hybrid signing requires hybrid_container_b64 when QID_PQC_BACKEND is selected")
+            raise PQCBackendError("Hybrid signing requires hybrid_container_b64")
 
         container = try_decode_container(hybrid_container_b64)
-        if container is None:
-            raise PQCBackendError("Invalid hybrid_container_b64 (failed to decode/validate)")
-        if container.alg != HYBRID_ALGO:
-            raise PQCBackendError("Hybrid container alg mismatch")
+        if container is None or container.alg != HYBRID_ALGO:
+            raise PQCBackendError("Invalid hybrid container")
+
         if container.ml_dsa.secret_key is None or container.falcon.secret_key is None:
-            raise PQCBackendError("Hybrid container missing secret keys (ml_dsa/falcon)")
+            raise PQCBackendError("Hybrid container missing secret keys")
 
         ml_sec = _b64decode(container.ml_dsa.secret_key)
         fa_sec = _b64decode(container.falcon.secret_key)
@@ -194,11 +207,14 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
             {
                 "v": _SIG_ENVELOPE_VERSION,
                 "alg": HYBRID_ALGO,
-                "sigs": {ML_DSA_ALGO: _b64encode(sig_ml), FALCON_ALGO: _b64encode(sig_fa)},
+                "sigs": {
+                    ML_DSA_ALGO: _b64encode(sig_ml),
+                    FALCON_ALGO: _b64encode(sig_fa),
+                },
             }
         )
 
-    # Stub signing (CI-safe)
+    # -------- STUB (CI-SAFE) --------
     secret = _b64decode(keypair.secret_key)
 
     if alg == DEV_ALGO:
@@ -211,12 +227,24 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
 
     if alg == HYBRID_ALGO:
         sigs = _stub_sign_hybrid(msg, secret)
-        return _envelope_encode({"v": _SIG_ENVELOPE_VERSION, "alg": HYBRID_ALGO, "sigs": {k: _b64encode(v) for k, v in sigs.items()}})
+        return _envelope_encode(
+            {
+                "v": _SIG_ENVELOPE_VERSION,
+                "alg": HYBRID_ALGO,
+                "sigs": {k: _b64encode(v) for k, v in sigs.items()},
+            }
+        )
 
     raise ValueError(f"Unsupported algorithm for signing: {keypair.algorithm!r}")
 
 
-def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair, *, hybrid_container_b64: Optional[str] = None) -> bool:
+def verify_payload(
+    payload: Dict[str, Any],
+    signature: str,
+    keypair: QIDKeyPair,
+    *,
+    hybrid_container_b64: Optional[str] = None,
+) -> bool:
     from qid.pqc_backends import PQCBackendError, enforce_no_silent_fallback_for_alg, liboqs_verify, selected_backend
     from qid.hybrid_key_container import try_decode_container
 
@@ -231,7 +259,11 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
     msg = _canonical_json(payload)
     backend = selected_backend()
 
+    # -------- REAL PQC VERIFY (STRICT OPT-IN) --------
     if backend is not None and alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
+        if not _real_pqc_enabled():
+            return False
+
         try:
             enforce_no_silent_fallback_for_alg(alg)
 
@@ -241,11 +273,11 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
                     return False
                 sig = _b64decode(sig_b64)
                 pub = _b64decode(keypair.public_key)
-                return liboqs_verify(alg, msg, sig, pub)
+                return bool(liboqs_verify(alg, msg, sig, pub))
 
-            # Hybrid verify requires container (contract-locked)
             if hybrid_container_b64 is None:
                 return False
+
             container = try_decode_container(hybrid_container_b64)
             if container is None or container.alg != HYBRID_ALGO:
                 return False
@@ -253,6 +285,7 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
             sigs = env.get("sigs")
             if not isinstance(sigs, dict):
                 return False
+
             s1 = sigs.get(ML_DSA_ALGO)
             s2 = sigs.get(FALCON_ALGO)
             if not isinstance(s1, str) or not isinstance(s2, str):
@@ -267,12 +300,11 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
                 liboqs_verify(ML_DSA_ALGO, msg, sig_ml, pub_ml)
                 and liboqs_verify(FALCON_ALGO, msg, sig_fa, pub_fa)
             )
-        except PQCBackendError:
-            return False
-        except Exception:
+
+        except (PQCBackendError, Exception):
             return False
 
-    # Stub verification (CI-safe)
+    # -------- STUB VERIFY (CI-SAFE) --------
     try:
         secret = _b64decode(keypair.secret_key)
 
@@ -292,10 +324,7 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
             sigs = env.get("sigs")
             if not isinstance(sigs, dict):
                 return False
-            try:
-                sig_map = {k: _b64decode(v) for k, v in sigs.items() if isinstance(v, str)}
-            except Exception:
-                return False
+            sig_map = {k: _b64decode(v) for k, v in sigs.items() if isinstance(v, str)}
             return _stub_verify_hybrid(msg, secret, sig_map)
 
         return False
