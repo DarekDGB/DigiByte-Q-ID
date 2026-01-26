@@ -210,13 +210,7 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
 
     if alg == HYBRID_ALGO:
         sigs = _stub_sign_hybrid(msg, secret)
-        return _envelope_encode(
-            {
-                "v": _SIG_ENVELOPE_VERSION,
-                "alg": HYBRID_ALGO,
-                "sigs": {k: _b64encode(v) for k, v in sigs.items()},
-            }
-        )
+        return _envelope_encode({"v": _SIG_ENVELOPE_VERSION, "alg": HYBRID_ALGO, "sigs": {k: _b64encode(v) for k, v in sigs.items()}})
 
     raise ValueError(f"Unsupported algorithm for signing: {keypair.algorithm!r}")
 
