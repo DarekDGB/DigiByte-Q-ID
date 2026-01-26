@@ -11,8 +11,8 @@ Design goals (contract + tests):
 
 from __future__ import annotations
 
-from typing import Any
 import os
+from typing import Any
 
 
 # These constants are also imported by tests.
@@ -30,7 +30,10 @@ class _OQSUnset:
 
 
 _OQS_UNSET = _OQSUnset()
-oqs: Any = _OQS_UNSET  # tests may monkeypatch to None
+# Tests may monkeypatch this to:
+# - None (meaning: explicitly unavailable)
+# - a module-like object (meaning: "cached oqs module", avoid importing real optional dep)
+oqs: Any = _OQS_UNSET
 
 
 # Prefer modern NIST names, but support legacy Dilithium naming via fallback.
@@ -51,6 +54,7 @@ def selected_backend() -> str | None:
 def require_real_pqc() -> bool:
     return selected_backend() is not None
 
+
 def _oqs_alg_for(qid_alg: str) -> str:
     """
     Back-compat shim for tests that expect _oqs_alg_for().
@@ -69,6 +73,7 @@ def _oqs_alg_candidates_for(qid_alg: str) -> tuple[str, ...]:
     primary = _OQS_ALG_BY_QID[qid_alg]
 
     if qid_alg == ML_DSA_ALGO:
+        # Back-compat: older python-oqs/liboqs stacks used Dilithium2 naming.
         return (primary, "Dilithium2")
 
     return (primary,)
@@ -81,13 +86,34 @@ def _validate_oqs_module(mod: Any) -> None:
 
 
 def _import_oqs() -> Any:
+    """
+    Import (or return cached) oqs module.
+
+    Critical test contracts:
+    - If tests inject a cached module-like object into `qid.pqc_backends.oqs`
+      AND backend is selected as liboqs, we must use that and NOT import.
+    - If oqs is None, treat as unavailable and raise PQCBackendError.
+    - If oqs is unset, attempt real import (may fail and raise PQCBackendError).
+    """
     global oqs
 
+    backend = selected_backend()
+
+    # Explicit "unavailable" knob (tests may set oqs=None)
     if oqs is None:
         raise PQCBackendError(
             "QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available."
         )
 
+    # If user selected liboqs AND tests (or embedder) injected a cached module-like
+    # object, use it and do not import the real optional dep.
+    if backend == "liboqs" and oqs is not _OQS_UNSET:
+        _validate_oqs_module(oqs)
+        return oqs
+
+    # Otherwise, try real import (CI-safe because this is only reached when:
+    # - backend is liboqs but oqs was not injected; or
+    # - some code path calls _import_oqs directly with unset oqs)
     try:
         import oqs as mod  # type: ignore
     except Exception:
@@ -109,6 +135,7 @@ def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
     if backend != "liboqs":
         raise PQCBackendError(f"Unknown QID_PQC_BACKEND: {backend!r}")
 
+    # Only enforce for algs this backend claims to support.
     if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
         return
 
@@ -136,10 +163,12 @@ def liboqs_sign(qid_alg: str, msg: bytes, priv: bytes) -> bytes:
             raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
         except TypeError:
+            # Deterministic error for API mismatches.
             raise PQCBackendError("liboqs signing failed (Signature API mismatch)") from None
         except PQCBackendError:
             raise
         except Exception:
+            # Try next candidate (e.g., ML-DSA-44 then Dilithium2).
             continue
 
     raise PQCBackendError("liboqs signing failed") from None
@@ -169,8 +198,11 @@ def liboqs_verify(qid_alg: str, msg: bytes, sig: bytes, pub: bytes) -> bool:
             raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
         except (ValueError, PQCBackendError):
+            # Contract: invalid alg or backend error is not "internal verify failure";
+            # callers/tests decide how to handle these.
             raise
         except Exception:
+            # Contract: verify must fail-closed on internal errors.
             continue
 
     return False
