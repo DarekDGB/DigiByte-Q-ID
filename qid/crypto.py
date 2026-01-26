@@ -133,13 +133,39 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
     """
     CI-safe key generation.
 
-    IMPORTANT: This function never imports oqs and never requires QID_PQC_BACKEND.
-    Real backend enforcement happens at sign/verify time.
+    IMPORTANT:
+    - By default, this function never imports oqs and never requires QID_PQC_BACKEND.
+    - However, in the PQC optional workflow we want *real* keypairs.
+      So, when explicitly opted in (QID_PQC_TESTS=1 + QID_PQC_BACKEND=liboqs and oqs installed),
+      we generate a real liboqs keypair for ML-DSA / Falcon.
     """
     if alg not in _ALLOWED_ALGOS:
         raise ValueError(f"Unknown Q-ID algorithm: {alg!r}")
 
     norm = _normalize_alg(alg)
+
+    # Opt-in real PQC keygen for PQC optional workflow.
+    if norm in (ML_DSA_ALGO, FALCON_ALGO):
+        try:
+            import os
+            import importlib.util
+
+            backend = os.getenv("QID_PQC_BACKEND", "").strip().lower()
+            pqc_tests = os.getenv("QID_PQC_TESTS", "").strip()
+
+            if backend == "liboqs" and pqc_tests == "1" and importlib.util.find_spec("oqs") is not None:
+                # Keep this import INSIDE the opt-in branch to preserve CI-safe default behavior.
+                from qid.pqc.keygen_liboqs import generate_falcon_keypair, generate_ml_dsa_keypair
+
+                if norm == ML_DSA_ALGO:
+                    pub, sec = generate_ml_dsa_keypair("ML-DSA-44")
+                else:
+                    pub, sec = generate_falcon_keypair("Falcon-512")
+
+                return QIDKeyPair(algorithm=norm, secret_key=_b64encode(sec), public_key=_b64encode(pub))
+        except Exception:
+            # Fall back to CI-safe stub keypair.
+            pass
 
     if norm == DEV_ALGO:
         secret = secrets.token_bytes(32)
@@ -210,7 +236,9 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
 
     if alg == HYBRID_ALGO:
         sigs = _stub_sign_hybrid(msg, secret)
-        return _envelope_encode({"v": _SIG_ENVELOPE_VERSION, "alg": HYBRID_ALGO, "sigs": {k: _b64encode(v) for k, v in sigs.items()}})
+        return _envelope_encode(
+            {"v": _SIG_ENVELOPE_VERSION, "alg": HYBRID_ALGO, "sigs": {k: _b64encode(v) for k, v in sigs.items()}}
+        )
 
     raise ValueError(f"Unsupported algorithm for signing: {keypair.algorithm!r}")
 
