@@ -4,142 +4,134 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 import base64
-import json
 
 from qid.pqc_backends import (
-    PQCBackendError,
-    ML_DSA_ALGO,
     FALCON_ALGO,
     HYBRID_ALGO,
+    ML_DSA_ALGO,
     enforce_no_silent_fallback_for_alg,
     liboqs_verify,
     selected_backend,
 )
 
+# ✅ Keep canonicalization single-source-of-truth (already used by signing)
+from qid.pqc_sign import canonical_payload_bytes  # re-export for tests
 
-def _b64url_decode(s: str) -> bytes:
-    s2 = s.encode("utf-8")
-    pad = b"=" * ((4 - (len(s2) % 4)) % 4)
-    return base64.urlsafe_b64decode(s2 + pad)
+
+def _b64u_decode(s: str) -> bytes:
+    pad = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode((s + pad).encode("ascii"))
 
 
 def _payload_for_pqc(src: Mapping[str, Any]) -> dict[str, Any]:
     """
-    Remove signature fields so the signed message is non-circular.
-
-    Tests expect pqc_alg to be removed too.
+    Coverage contract:
+    remove algorithm tag and any signature fields from a payload copy
     """
-    out = dict(src)
-    out.pop("pqc_alg", None)
-    out.pop("pqc_sig", None)
-    out.pop("pqc_sig_ml_dsa", None)
-    out.pop("pqc_sig_falcon", None)
-    return out
+    d = dict(src)
+    d.pop("pqc_alg", None)
+    d.pop("pqc_sig", None)
+    d.pop("pqc_sig_ml_dsa", None)
+    d.pop("pqc_sig_falcon", None)
+    return d
 
 
-def _decode_pubkey(binding_payload: Mapping[str, Any], which: str) -> bytes:
-    pubkeys = binding_payload.get("pqc_pubkeys")
-    if not isinstance(pubkeys, Mapping):
-        raise ValueError("binding payload missing pqc_pubkeys")
-    s = pubkeys.get(which)
-    if not isinstance(s, str) or not s:
-        raise ValueError("binding payload missing pubkey")
-    return _b64url_decode(s)
-
-
-def _decode_sig_field(login_payload: Mapping[str, Any], field: str) -> bytes:
-    s = login_payload.get(field)
-    if not isinstance(s, str) or not s:
-        raise ValueError("login payload missing signature field")
-    return _b64url_decode(s)
-
-
-def _canonical_bytes(payload: Mapping[str, Any]) -> bytes:
-    # Deterministic, minimal JSON
-    return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+def _binding_payload(binding_env: Mapping[str, Any]) -> Mapping[str, Any]:
+    p = binding_env.get("payload")
+    if not isinstance(p, Mapping):
+        raise ValueError("binding_env.payload missing")
+    return p
 
 
 def verify_pqc_login(*args: Any, **kwargs: Any) -> bool:
     """
-    Fail-closed PQC login verification.
-
-    Supports BOTH calling styles used across tests:
-      - verify_pqc_login(login_payload, binding_env)
-      - verify_pqc_login(login_payload=..., binding_env=...)
+    Accept BOTH call styles used in your tests:
+      1) verify_pqc_login(login_payload=..., binding_env=...)
+      2) verify_pqc_login(binding_payload, login_payload)  (dual-proof tests)
+    Always fail-closed: return False on any error.
     """
-    # Accept positional or keyword forms.
-    login_payload = None
-    binding_env = None
-
-    if len(args) >= 1:
-        login_payload = args[0]
-    if len(args) >= 2:
-        binding_env = args[1]
-
-    if login_payload is None:
-        login_payload = kwargs.get("login_payload")
-    if binding_env is None:
-        binding_env = kwargs.get("binding_env")
-
     try:
-        if not isinstance(login_payload, Mapping) or not isinstance(binding_env, Mapping):
-            return False
+        if "login_payload" in kwargs or "binding_env" in kwargs:
+            login_payload = kwargs.get("login_payload")
+            binding_env = kwargs.get("binding_env")
+            if not isinstance(login_payload, Mapping) or not isinstance(binding_env, Mapping):
+                return False
+            binding_payload = _binding_payload(binding_env)
+        else:
+            if len(args) != 2:
+                return False
+            binding_payload, login_payload = args
+            if not isinstance(binding_payload, Mapping) or not isinstance(login_payload, Mapping):
+                return False
 
         backend = selected_backend()
-        if backend is None:
-            return False
         if backend != "liboqs":
             return False
 
-        # binding_env must provide a binding payload under "payload"
-        binding_payload = binding_env.get("payload")
-        if not isinstance(binding_payload, Mapping):
-            return False
-
         alg = login_payload.get("pqc_alg")
-        if not isinstance(alg, str):
+        if not isinstance(alg, str) or not alg:
             return False
 
-        # Guardrail: if backend selected, PQC must be real.
+        # Guardrail (no silent fallback when backend selected)
         enforce_no_silent_fallback_for_alg(alg)
 
-        # Policy checks (fail closed)
-        policy = binding_payload.get("policy")
-        if not isinstance(policy, str):
+        # Optional consistency check if response includes pqc_payload
+        resp_payload = login_payload.get("pqc_payload")
+        if isinstance(resp_payload, Mapping) and dict(resp_payload) != dict(binding_payload):
             return False
 
-        # Compute message bytes from sanitized binding payload
-        msg = _canonical_bytes(_payload_for_pqc(binding_payload))
+        msg = canonical_payload_bytes(binding_payload)
+
+        pubkeys = binding_payload.get("pqc_pubkeys")
+        if not isinstance(pubkeys, Mapping):
+            return False
+
+        policy = binding_payload.get("policy")
+        if not isinstance(policy, str) or not policy:
+            return False
 
         if alg == ML_DSA_ALGO:
             if policy not in {"ml-dsa", "hybrid"}:
                 return False
-            sig = _decode_sig_field(login_payload, "pqc_sig")
-            pub = _decode_pubkey(binding_payload, "ml_dsa")
-            return bool(liboqs_verify(ML_DSA_ALGO, msg, sig, pub))
+            sig_b64u = login_payload.get("pqc_sig")
+            pub_b64u = pubkeys.get("ml_dsa")
+            if not isinstance(sig_b64u, str) or not isinstance(pub_b64u, str):
+                return False
+            return bool(liboqs_verify(ML_DSA_ALGO, msg, _b64u_decode(sig_b64u), _b64u_decode(pub_b64u)))
 
         if alg == FALCON_ALGO:
             if policy not in {"falcon", "hybrid"}:
                 return False
-            sig = _decode_sig_field(login_payload, "pqc_sig")
-            pub = _decode_pubkey(binding_payload, "falcon")
-            return bool(liboqs_verify(FALCON_ALGO, msg, sig, pub))
+            sig_b64u = login_payload.get("pqc_sig")
+            pub_b64u = pubkeys.get("falcon")
+            if not isinstance(sig_b64u, str) or not isinstance(pub_b64u, str):
+                return False
+            return bool(liboqs_verify(FALCON_ALGO, msg, _b64u_decode(sig_b64u), _b64u_decode(pub_b64u)))
 
         if alg == HYBRID_ALGO:
             if policy != "hybrid":
                 return False
-            sig_ml = _decode_sig_field(login_payload, "pqc_sig_ml_dsa")
-            sig_fa = _decode_sig_field(login_payload, "pqc_sig_falcon")
-            pub_ml = _decode_pubkey(binding_payload, "ml_dsa")
-            pub_fa = _decode_pubkey(binding_payload, "falcon")
 
-            ok_ml = bool(liboqs_verify(ML_DSA_ALGO, msg, sig_ml, pub_ml))
-            ok_fa = bool(liboqs_verify(FALCON_ALGO, msg, sig_fa, pub_fa))
+            sig_ml = login_payload.get("pqc_sig_ml_dsa")
+            sig_fa = login_payload.get("pqc_sig_falcon")
+
+            # dual-proof tests also allow nested dict: pqc_sig: {ml_dsa, falcon}
+            if (not isinstance(sig_ml, str)) or (not isinstance(sig_fa, str)):
+                nested = login_payload.get("pqc_sig")
+                if isinstance(nested, Mapping):
+                    sig_ml = nested.get("ml_dsa")
+                    sig_fa = nested.get("falcon")
+
+            pub_ml = pubkeys.get("ml_dsa")
+            pub_fa = pubkeys.get("falcon")
+
+            if not all(isinstance(x, str) for x in [sig_ml, sig_fa, pub_ml, pub_fa]):
+                return False
+
+            ok_ml = bool(liboqs_verify(ML_DSA_ALGO, msg, _b64u_decode(sig_ml), _b64u_decode(pub_ml)))
+            ok_fa = bool(liboqs_verify(FALCON_ALGO, msg, _b64u_decode(sig_fa), _b64u_decode(pub_fa)))
             return bool(ok_ml and ok_fa)
 
-        return False
-
-    except (ValueError, PQCBackendError):
         return False
     except Exception:
         return False
