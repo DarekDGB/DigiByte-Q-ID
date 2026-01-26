@@ -40,11 +40,36 @@ def _require_liboqs() -> Any:
     - If oqs is unavailable (or tests force oqs=None) -> PQCBackendError
     - Otherwise return the oqs module-like object.
     """
-    if os.environ.get("QID_PQC_BACKEND") != "liboqs":
+    backend = os.environ.get("QID_PQC_BACKEND", "").strip().lower()
+    if backend != "liboqs":
         raise PQCBackendError("liboqs backend not enabled (QID_PQC_BACKEND!=liboqs)")
     if oqs is None:
         raise PQCBackendError("liboqs backend selected but 'oqs' module is not available")
     return oqs
+
+
+def _export_secret_key(signer: Any) -> bytes:
+    """
+    Export secret key across python-oqs API variants.
+
+    We prefer explicit export methods, but support older/alternate attribute patterns.
+    """
+    if hasattr(signer, "export_secret_key"):
+        sk = signer.export_secret_key()  # type: ignore[attr-defined]
+        if isinstance(sk, (bytes, bytearray)):
+            return bytes(sk)
+
+    if hasattr(signer, "secret_key"):
+        sk = signer.secret_key  # type: ignore[attr-defined]
+        if isinstance(sk, (bytes, bytearray)):
+            return bytes(sk)
+
+    if hasattr(signer, "_sk"):
+        sk = signer._sk  # type: ignore[attr-defined]
+        if isinstance(sk, (bytes, bytearray)):
+            return bytes(sk)
+
+    raise PQCBackendError("liboqs signer did not expose a usable secret key export API")
 
 
 def generate_ml_dsa_keypair(alg: str) -> Tuple[bytes, bytes]:
@@ -65,8 +90,10 @@ def generate_ml_dsa_keypair(alg: str) -> Tuple[bytes, bytes]:
             # IMPORTANT: do not swallow TypeError from Signature ctor — tests expect it to bubble.
             with mod.Signature(cand) as signer:  # type: ignore[attr-defined]
                 pub = signer.generate_keypair()
-                sec = signer.export_secret_key()
-                return pub, sec
+                if not isinstance(pub, (bytes, bytearray)):
+                    raise PQCBackendError("liboqs generate_keypair() did not return bytes public key")
+                sec = _export_secret_key(signer)
+                return bytes(pub), sec
         except TypeError:
             raise
         except Exception as e:
@@ -84,5 +111,7 @@ def generate_falcon_keypair(alg: str) -> Tuple[bytes, bytes]:
     mod = _require_liboqs()
     with mod.Signature(alg) as signer:  # type: ignore[attr-defined]
         pub = signer.generate_keypair()
-        sec = signer.export_secret_key()
-        return pub, sec
+        if not isinstance(pub, (bytes, bytearray)):
+            raise PQCBackendError("liboqs generate_keypair() did not return bytes public key")
+        sec = _export_secret_key(signer)
+        return bytes(pub), sec
