@@ -1,6 +1,8 @@
 # DigiByte Q-ID — Vision
 
-Status: **draft – v0.1**
+Status: VISION DOCUMENT — non-normative, non-binding
+Applies to: Q-ID v0.1+
+Source of truth: docs/CONTRACTS/*
 
 ---
 
