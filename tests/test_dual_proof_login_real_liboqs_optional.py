@@ -24,6 +24,12 @@ def _b64u(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).decode("ascii").rstrip("=")
 
 
+def _b64u_decode(s: str) -> bytes:
+    """Decode unpadded base64url string back into bytes (deterministic)."""
+    pad = (-len(s)) % 4
+    return base64.urlsafe_b64decode(s + ("=" * pad))
+
+
 @pytest.mark.skipif(os.getenv("QID_PQC_TESTS") != "1", reason="QID_PQC_TESTS!=1 (opt-in)")
 @pytest.mark.skipif(not _has_oqs(), reason="oqs not installed")
 def test_dual_proof_login_real_liboqs_ml_dsa_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -95,7 +101,12 @@ def test_dual_proof_login_real_liboqs_tamper_pqc_sig_fails(monkeypatch: pytest.M
     sig = liboqs_sign(ML_DSA_ALGO, msg, ml_sec)
     sig_b64u = _b64u(sig)
 
-    tampered = sig_b64u[:-1] + ("A" if sig_b64u[-1] != "A" else "B")
+    # ✅ Deterministic tamper: mutate decoded signature bytes, not base64 tail.
+    sig_bytes = _b64u_decode(sig_b64u)
+    tampered_bytes = bytearray(sig_bytes)
+    tampered_bytes[len(tampered_bytes) // 2] ^= 0x01  # flip 1 bit in the middle
+    tampered = _b64u(bytes(tampered_bytes))
+
     response = {"pqc_payload": request, "pqc_alg": ML_DSA_ALGO, "pqc_sig": tampered}
 
     assert verify_pqc_login(request, response) is False
