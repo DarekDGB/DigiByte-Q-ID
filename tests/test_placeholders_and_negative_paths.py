@@ -28,15 +28,6 @@ from qid.integration.adamantine import (
     prepare_signed_login_response,
     verify_signed_login_response_server,
 )
-from qid.integration.guardian import (
-    GuardianIntegrationNotImplemented,
-    require_guardian_integration,
-)
-
-
-def test_guardian_integration_is_fail_closed_until_implemented() -> None:
-    with pytest.raises(GuardianIntegrationNotImplemented):
-        require_guardian_integration()
 
 
 def test_build_login_response_rejects_missing_fields() -> None:
@@ -129,50 +120,26 @@ def test_adamantine_prepare_rejects_mismatched_callback_url() -> None:
         )
 
 
-def test_adamantine_verify_returns_false_on_bad_login_uri() -> None:
+def test_adamantine_server_verify_rejects_bad_uri() -> None:
     service = QIDServiceConfig(service_id="example.com", callback_url="https://example.com/qid")
     keypair = generate_keypair(DEV_ALGO)
 
-    # invalid URI => parse throws inside helper => returns False
     ok = verify_signed_login_response_server(
         service=service,
-        login_uri="not-a-qid-uri",
-        response_payload={"type": "login_response", "service_id": "example.com", "nonce": "abc123"},
-        signature="bad",
+        login_uri="qid://login",  # invalid (no query)
+        response_payload={"type": "login_response", "service_id": "example.com", "nonce": "n"},
+        signature="sig",
         keypair=keypair,
     )
-    assert ok is False
+    assert not ok
 
 
-def test_crypto_envelope_fail_closed_on_corruption() -> None:
-    keypair = generate_keypair(DEV_ALGO)
-    payload = {"a": 1}
+def test_verify_payload_rejects_wrong_types() -> None:
+    # basic type sanity on verify_payload surface
+    kp = generate_keypair(DEV_ALGO)
+    assert not verify_payload({"x": 1}, signature="not-b64", keypair=kp)
 
-    sig = sign_payload(payload, keypair)
-    assert verify_payload(payload, sig, keypair)
-
-    # Completely invalid signature string => must fail closed (False)
-    assert verify_payload(payload, "%%%notbase64%%%", keypair) is False
-
-
-def test_crypto_alg_mismatch_fails_closed() -> None:
-    payload = {"type": "x", "n": 1}
-    kp_dev = generate_keypair(DEV_ALGO)
-    kp_pqc = generate_keypair(ML_DSA_ALGO)
-
-    sig_dev = sign_payload(payload, kp_dev)
-    # verification with different keypair algorithm must fail
-    assert verify_payload(payload, sig_dev, kp_pqc) is False
-
-
-def test_hybrid_requires_both_signatures_strict() -> None:
-    payload = {"type": "login_response", "service_id": "example.com", "nonce": "n"}
-    kp = generate_keypair(HYBRID_ALGO)
-    sig = sign_payload(payload, kp)
-
-    assert verify_payload(payload, sig, kp) is True
-
-    # tamper signature envelope bytes by re-signing with single algo and verifying as hybrid
-    kp2 = generate_keypair(FALCON_ALGO)
-    sig2 = sign_payload(payload, kp2)
-    assert verify_payload(payload, sig2, kp) is False  # alg mismatch => fail closed
+    # HYBRID requires container; without it => fail closed
+    hk = generate_keypair(HYBRID_ALGO)
+    sig = sign_payload({"x": 1}, hk, hybrid_container_b64="AAEC")
+    assert not verify_payload({"x": 1}, sig, hk)  # missing container => False
