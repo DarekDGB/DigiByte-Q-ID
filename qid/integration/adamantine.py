@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
+from ..crypto import QIDKeyPair, sign_payload
 from ..protocol import (
     build_login_request_payload,
     build_login_request_uri,
-    parse_login_request_uri,
     build_login_response_payload,
+    parse_login_request_uri,
     server_verify_login_response,
 )
-from ..crypto import QIDKeyPair, sign_payload
 
 
 @dataclass
@@ -120,3 +120,91 @@ def verify_signed_login_response_server(
         signature=signature,
         keypair=keypair,
     )
+
+
+def build_adamantine_qid_evidence(
+    *,
+    login_uri: str,
+    response_payload: Dict[str, Any],
+    signature: str,
+    hybrid_container_b64: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Build an AdamantineOS evidence object carrying a Q-ID login flow result.
+
+    Fail-closed rules:
+    - Strict about top-level types.
+    - Does not attempt to validate protocol internals; server verification does that.
+    """
+    if not isinstance(login_uri, str) or not login_uri:
+        raise TypeError("login_uri must be a non-empty string")
+    if not isinstance(response_payload, dict):
+        raise TypeError("response_payload must be a dict")
+    if not isinstance(signature, str) or not signature:
+        raise TypeError("signature must be a non-empty string")
+    if hybrid_container_b64 is not None and (
+        not isinstance(hybrid_container_b64, str) or not hybrid_container_b64
+    ):
+        raise TypeError("hybrid_container_b64 must be a non-empty string if provided")
+
+    evidence: Dict[str, Any] = {
+        "v": "1",
+        "kind": "qid_login_v1",
+        "login_uri": login_uri,
+        "response_payload": response_payload,
+        "signature": signature,
+    }
+    if hybrid_container_b64 is not None:
+        evidence["hybrid_container_b64"] = hybrid_container_b64
+    return evidence
+
+
+def verify_adamantine_qid_evidence(
+    *,
+    service: QIDServiceConfig,
+    evidence: Dict[str, Any],
+    keypair: QIDKeyPair,
+) -> bool:
+    """
+    Verify an AdamantineOS evidence object for Q-ID login.
+
+    Fail-closed:
+    - Any missing/wrong type => False
+    - Any verification error => False
+    """
+    try:
+        if not isinstance(evidence, dict):
+            return False
+
+        if evidence.get("v") != "1":
+            return False
+        if evidence.get("kind") != "qid_login_v1":
+            return False
+
+        login_uri = evidence.get("login_uri")
+        response_payload = evidence.get("response_payload")
+        signature = evidence.get("signature")
+        hybrid_container_b64 = evidence.get("hybrid_container_b64", None)
+
+        if not isinstance(login_uri, str) or not login_uri:
+            return False
+        if not isinstance(response_payload, dict):
+            return False
+        if not isinstance(signature, str) or not signature:
+            return False
+        if hybrid_container_b64 is not None and (
+            not isinstance(hybrid_container_b64, str) or not hybrid_container_b64
+        ):
+            return False
+
+        # Note: hybrid_container_b64 is carried for Adamantine binding, but Q-ID login
+        # verification remains deterministic via the signed response check.
+        return verify_signed_login_response_server(
+            service=service,
+            login_uri=login_uri,
+            response_payload=response_payload,
+            signature=signature,
+            keypair=keypair,
+        )
+    except Exception:
+        return False
