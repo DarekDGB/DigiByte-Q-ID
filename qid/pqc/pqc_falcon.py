@@ -9,14 +9,24 @@ def sign_falcon(*, oqs: Any, msg: bytes, priv: bytes, oqs_alg: str | None = None
     """
     Falcon signing via python-oqs.
 
-    Safety rule:
-    - Never allow oqs.Signature objects to leak into exception context
-      (pytest repr can segfault).
+    Compatibility rule (deterministic, fail-closed):
+    - Prefer APIs that accept `sign(msg, priv)` (used by DummyOQS tests).
+    - Otherwise fall back to secret-key import + `sign(msg)`.
     """
     alg = oqs_alg or "Falcon-512"
+    signer = None
     try:
         with oqs.Signature(alg) as signer:
-            # Ensure secret key is imported across API variants.
+            # First try the API that accepts priv directly (DummyOQS style).
+            try:
+                sig = signer.sign(msg, priv)
+                if sig is None:
+                    raise RuntimeError("signer.sign() returned None")
+                return sig
+            except TypeError:
+                pass
+
+            # If that fails, try importing secret key then sign(msg).
             _set_secret_key(signer, priv)
 
             try:
@@ -40,11 +50,10 @@ def verify_falcon(*, oqs: Any, msg: bytes, sig: bytes, pub: bytes, oqs_alg: str 
     """
     Falcon verify via python-oqs.
 
-    Safety rule:
-    - Never allow oqs.Signature objects to leak into exception context
-      (pytest repr can segfault).
+    Fail-closed: any exception => False.
     """
     alg = oqs_alg or "Falcon-512"
+    verifier = None
     try:
         with oqs.Signature(alg) as verifier:
             return bool(verifier.verify(msg, sig, pub))
