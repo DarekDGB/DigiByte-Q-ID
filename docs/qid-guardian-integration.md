@@ -42,6 +42,38 @@ Public functions:
 
 ------------------------------------------------------------------------
 
+## Short Example
+
+``` python
+from qid.integration.guardian import (
+    GuardianServiceConfig,
+    build_guardian_qid_login_event,
+    verify_guardian_qid_login_event,
+)
+
+# After Q-ID login verification succeeds
+guardian_service = GuardianServiceConfig(
+    service_id="example.com",
+    callback_url="https://example.com/qid",
+)
+
+event = build_guardian_qid_login_event(
+    service=guardian_service,
+    login_uri=login_uri,
+    response_payload=response_payload,
+    qid_signature=signature,
+)
+
+# Structural validation before policy evaluation
+if not verify_guardian_qid_login_event(event):
+    raise RuntimeError("Invalid Guardian event")
+
+# Pass to policy engine
+decision = guardian_policy_engine.evaluate(event)
+```
+
+------------------------------------------------------------------------
+
 ## 1. Building a Guardian Login Event
 
 ### Function
