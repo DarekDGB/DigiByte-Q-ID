@@ -10,33 +10,47 @@ def sign_falcon(*, oqs: Any, msg: bytes, priv: bytes, oqs_alg: str | None = None
     Falcon signing via python-oqs.
 
     Compatibility rule (deterministic, fail-closed):
-    - Prefer APIs that accept `sign(msg, priv)` (used by DummyOQS tests).
+    - Prefer modern ctor kwarg: Signature(alg, secret_key=priv) when supported.
+    - Otherwise prefer APIs that accept `sign(msg, priv)` (DummyOQS style).
     - Otherwise fall back to secret-key import + `sign(msg)`.
     """
     alg = oqs_alg or "Falcon-512"
     signer = None
     try:
-        with oqs.Signature(alg) as signer:
-            # First try the API that accepts priv directly (DummyOQS style).
-            try:
-                sig = signer.sign(msg, priv)
+        # Newer API: allow secret_key kwarg at ctor (some stacks require this for Falcon).
+        try:
+            with oqs.Signature(alg, secret_key=priv) as signer:
+                try:
+                    sig = signer.sign(msg)
+                except TypeError:
+                    sig = signer.sign(msg, priv)
+
                 if sig is None:
                     raise RuntimeError("signer.sign() returned None")
                 return sig
-            except TypeError:
-                pass
+        except TypeError:
+            # Older API: ctor kwargs not supported.
+            with oqs.Signature(alg) as signer:
+                # First try the API that accepts priv directly (DummyOQS style).
+                try:
+                    sig = signer.sign(msg, priv)
+                    if sig is None:
+                        raise RuntimeError("signer.sign() returned None")
+                    return sig
+                except TypeError:
+                    pass
 
-            # If that fails, try importing secret key then sign(msg).
-            _set_secret_key(signer, priv)
+                # If that fails, try importing secret key then sign(msg).
+                _set_secret_key(signer, priv)
 
-            try:
-                sig = signer.sign(msg)
-            except TypeError:
-                sig = signer.sign(msg, priv)
+                try:
+                    sig = signer.sign(msg)
+                except TypeError:
+                    sig = signer.sign(msg, priv)
 
-            if sig is None:
-                raise RuntimeError("signer.sign() returned None")
-            return sig
+                if sig is None:
+                    raise RuntimeError("signer.sign() returned None")
+                return sig
 
     except Exception:
         try:
