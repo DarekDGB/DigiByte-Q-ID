@@ -32,12 +32,14 @@ def sign_ml_dsa(*, oqs: Any, msg: bytes, priv: bytes, oqs_alg: str | None = None
     """
     ML-DSA signing via python-oqs.
 
-    Safety rule:
-    - Never allow oqs.Signature objects to leak into exception context
-      (pytest repr can segfault).
+    Compatibility rule (deterministic, fail-closed):
+    - Prefer APIs that accept `sign(msg, priv)` (used by DummyOQS tests).
+    - Otherwise fall back to secret-key import + `sign(msg)`.
     """
     alg = oqs_alg or "ML-DSA-44"
+    signer = None
     try:
+        # Newer API: allow secret_key kwarg at ctor (if supported).
         try:
             with oqs.Signature(alg, secret_key=priv) as signer:
                 try:
@@ -49,7 +51,18 @@ def sign_ml_dsa(*, oqs: Any, msg: bytes, priv: bytes, oqs_alg: str | None = None
                     raise RuntimeError("signer.sign() returned None")
                 return sig
         except TypeError:
+            # Older API: ctor kwargs not supported.
             with oqs.Signature(alg) as signer:
+                # First try the API that accepts priv directly (DummyOQS style).
+                try:
+                    sig = signer.sign(msg, priv)
+                    if sig is None:
+                        raise RuntimeError("signer.sign() returned None")
+                    return sig
+                except TypeError:
+                    pass
+
+                # If that fails, try importing the secret key then sign(msg).
                 _set_secret_key(signer, priv)
 
                 try:
@@ -73,11 +86,10 @@ def verify_ml_dsa(*, oqs: Any, msg: bytes, sig: bytes, pub: bytes, oqs_alg: str 
     """
     ML-DSA verify via python-oqs.
 
-    Safety rule:
-    - Never allow oqs.Signature objects to leak into exception context
-      (pytest repr can segfault).
+    Fail-closed: any exception => False.
     """
     alg = oqs_alg or "ML-DSA-44"
+    verifier = None
     try:
         with oqs.Signature(alg) as verifier:
             return bool(verifier.verify(msg, sig, pub))
