@@ -21,7 +21,6 @@ Integration](https://img.shields.io/badge/Adamantine-Integration-success)
 Integration](https://img.shields.io/badge/Guardian-Integration-success)
 ![ML-DSA](https://img.shields.io/badge/PQC-ML--DSA-informational)
 ![Falcon](https://img.shields.io/badge/PQC-Falcon-informational)
-![Hybrid](https://img.shields.io/badge/PQC-Hybrid%20Strict-AND-critical)
 
 ------------------------------------------------------------------------
 
@@ -35,13 +34,13 @@ Integration](https://img.shields.io/badge/Guardian-Integration-success)
 
 ``` mermaid
 flowchart LR
-    A[Service] -->|QR Login Request| B[Wallet]
-    B -->|Signed Login Response| A
-    A -->|Verify Signature(s)| C[Q-ID]
-    C -->|Optional Adapter| D[Adamantine Evidence]
-    C -->|Optional Adapter| E[Guardian Event]
-    D --> F[Execution Boundary]
-    E --> G[Policy Engine]
+    Service -->|QR Login Request| Wallet
+    Wallet -->|Signed Login Response| Service
+    Service -->|Verify Signatures| QID
+    QID -->|Build Evidence| Adamantine
+    QID -->|Build Event| Guardian
+    Adamantine --> ExecutionBoundary
+    Guardian --> PolicyEngine
 ```
 
 ------------------------------------------------------------------------
