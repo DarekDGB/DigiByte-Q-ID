@@ -71,3 +71,35 @@ def test_verify_payload_backend_branch_hits_generic_exception(monkeypatch: pytes
     )
     dummy = QIDKeyPair(algorithm=HYBRID_ALGO, public_key=c._b64encode(b"p"), secret_key=c._b64encode(b"s"))
     assert c.verify_payload({"x": 1}, sig_env, dummy, hybrid_container_b64=container_b64) is False
+
+def test_verify_payload_backend_branch_decodes_sig_then_b64_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Hits crypto.py 268 then throws in _b64decode -> caught -> hits 299-300.
+    import qid.pqc_backends as pb
+
+    monkeypatch.setattr(pb, "selected_backend", lambda: "liboqs")
+    monkeypatch.setattr(pb, "enforce_no_silent_fallback_for_alg", lambda _alg: None)
+    monkeypatch.setattr(pb, "liboqs_verify", lambda *_a, **_k: True)
+
+    # invalid base64 string forces decode failure after line 268
+    sig_env = c._envelope_encode({"v": "1", "alg": "pqc-ml-dsa", "sig": "!!!"})
+    kp = QIDKeyPair(algorithm="pqc-ml-dsa", public_key=c._b64encode(b"p"), secret_key=c._b64encode(b"s"))
+    assert c.verify_payload({"x": 1}, sig_env, kp) is False
+
+
+def test_verify_payload_backend_hybrid_decodes_both_sigs_and_verifies(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Hits crypto.py 286 and continues through decode + verify path.
+    import qid.pqc_backends as pb
+    from qid.hybrid_key_container import build_container, encode_container
+
+    monkeypatch.setattr(pb, "selected_backend", lambda: "liboqs")
+    monkeypatch.setattr(pb, "enforce_no_silent_fallback_for_alg", lambda _alg: None)
+    monkeypatch.setattr(pb, "liboqs_verify", lambda *_a, **_k: True)
+
+    container = build_container("kid1", c._b64encode(b"mlpub"), c._b64encode(b"fapub"))
+    container_b64 = encode_container(container)
+
+    sig_env = c._envelope_encode(
+        {"v": "1", "alg": HYBRID_ALGO, "sigs": {"pqc-ml-dsa": "AAEC", "pqc-falcon": "AAEC"}}
+    )
+    dummy = QIDKeyPair(algorithm=HYBRID_ALGO, public_key=c._b64encode(b"p"), secret_key=c._b64encode(b"s"))
+    assert c.verify_payload({"x": 1}, sig_env, dummy, hybrid_container_b64=container_b64) is True
