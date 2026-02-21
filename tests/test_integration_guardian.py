@@ -200,3 +200,106 @@ def test_guardian_event_verify_fail_closed_matrix() -> None:
     assert not verify_guardian_qid_login_event(e7)
 
     assert not verify_guardian_qid_login_event("nope")  # type: ignore[arg-type]
+
+import pytest
+
+from qid.crypto import generate_dev_keypair
+from qid.integration.adamantine import (
+    QIDServiceConfig,
+    build_qid_login_uri,
+    prepare_signed_login_response,
+)
+from qid.integration.guardian import (
+    GuardianServiceConfig,
+    build_guardian_qid_login_event,
+)
+
+
+def _make_login(service_id: str = "example.com", callback_url: str = "https://example.com/qid"):
+    service = QIDServiceConfig(service_id=service_id, callback_url=callback_url)
+    gservice = GuardianServiceConfig(service_id=service_id, callback_url=callback_url)
+
+    login_uri = build_qid_login_uri(service, nonce="abc123")
+    kp = generate_dev_keypair()
+    response_payload, sig = prepare_signed_login_response(
+        service=service,
+        login_uri=login_uri,
+        address="dgb1qxyz123example",
+        keypair=kp,
+        key_id="primary",
+    )
+    return gservice, login_uri, response_payload, sig
+
+
+def test_guardian_build_rejects_nonce_wrong_type_or_empty() -> None:
+    gservice, login_uri, response_payload, sig = _make_login()
+
+    bad = dict(response_payload)
+    bad["nonce"] = ""  # hits guardian.py 94-95
+    with pytest.raises(TypeError, match="response_payload\\.nonce"):
+        build_guardian_qid_login_event(
+            service=gservice,
+            login_uri=login_uri,
+            response_payload=bad,
+            qid_signature=sig,
+        )
+
+
+def test_guardian_build_rejects_address_wrong_type_or_empty() -> None:
+    gservice, login_uri, response_payload, sig = _make_login()
+
+    bad = dict(response_payload)
+    bad["address"] = ""  # hits guardian.py 96-97
+    with pytest.raises(TypeError, match="response_payload\\.address"):
+        build_guardian_qid_login_event(
+            service=gservice,
+            login_uri=login_uri,
+            response_payload=bad,
+            qid_signature=sig,
+        )
+
+
+def test_guardian_build_rejects_key_id_invalid() -> None:
+    gservice, login_uri, response_payload, sig = _make_login()
+
+    bad = dict(response_payload)
+    bad["key_id"] = ""  # hits guardian.py 100-101
+    with pytest.raises(TypeError, match="response_payload\\.key_id"):
+        build_guardian_qid_login_event(
+            service=gservice,
+            login_uri=login_uri,
+            response_payload=bad,
+            qid_signature=sig,
+        )
+
+
+def test_guardian_build_rejects_nonce_mismatch_vs_login_uri() -> None:
+    gservice, login_uri, response_payload, sig = _make_login()
+
+    bad = dict(response_payload)
+    bad["nonce"] = "zzz"  # hits guardian.py 106-108
+    with pytest.raises(TypeError, match="nonce mismatch"):
+        build_guardian_qid_login_event(
+            service=gservice,
+            login_uri=login_uri,
+            response_payload=bad,
+            qid_signature=sig,
+        )
+
+
+def test_guardian_build_include_login_uri_branch_when_key_id_absent() -> None:
+    # specifically targets guardian.py branch 121->123
+    gservice, login_uri, response_payload, sig = _make_login()
+
+    no_kid = dict(response_payload)
+    no_kid.pop("key_id", None)
+
+    ev = build_guardian_qid_login_event(
+        service=gservice,
+        login_uri=login_uri,
+        response_payload=no_kid,
+        qid_signature=sig,
+        include_login_uri=True,
+    )
+    assert "key_id" not in ev
+    assert ev["login_uri"] == login_uri
