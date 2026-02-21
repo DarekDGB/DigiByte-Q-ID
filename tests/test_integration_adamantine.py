@@ -246,3 +246,52 @@ def test_verify_adamantine_qid_evidence_catches_internal_exception(monkeypatch) 
         },
         keypair=keypair,
     )
+
+def test_verify_adamantine_qid_evidence_hits_remaining_type_guards() -> None:
+    """
+    Covers remaining fail-closed guards in qid/integration/adamantine.py:
+    - kind mismatch
+    - response_payload wrong type
+    - signature empty
+    """
+    service = QIDServiceConfig(service_id="example.com", callback_url="https://example.com/qid")
+    keypair = generate_dev_keypair()
+
+    # kind mismatch -> hits missing line 182
+    assert not verify_adamantine_qid_evidence(
+        service=service,
+        evidence={
+            "v": "1",
+            "kind": "not_qid",
+            "login_uri": "qid://login?d=x",
+            "response_payload": {},
+            "signature": "sig",
+        },
+        keypair=keypair,
+    )
+
+    # response_payload wrong type -> hits missing line 192
+    assert not verify_adamantine_qid_evidence(
+        service=service,
+        evidence={
+            "v": "1",
+            "kind": "qid_login_v1",
+            "login_uri": "qid://login?d=x",
+            "response_payload": "nope",  # type: ignore[typeddict-item]
+            "signature": "sig",
+        },  # type: ignore[arg-type]
+        keypair=keypair,
+    )
+
+    # signature empty -> hits missing line 194
+    assert not verify_adamantine_qid_evidence(
+        service=service,
+        evidence={
+            "v": "1",
+            "kind": "qid_login_v1",
+            "login_uri": "qid://login?d=x",
+            "response_payload": {},
+            "signature": "",
+        },
+        keypair=keypair,
+    )
