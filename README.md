@@ -2,7 +2,6 @@
 MIT License
 Copyright (c) 2025 DarekDGB
 -->
-```
 # 🔐 DigiByte Q-ID
 
 ## Quantum-Ready Authentication Protocol with Signed Payloads & Optional PQC Backends
