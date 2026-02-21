@@ -89,3 +89,37 @@ def test_encode_container_rejects_component_alg_mismatch() -> None:
     }
     with pytest.raises(ValueError):
         encode_container(d)
+
+from qid.hybrid_key_container import build_container, from_dict
+
+
+def test_from_dict_rejects_invalid_kid() -> None:
+    good = build_container("kid1", "PUB_ML", "PUB_FA")
+    d = good.to_dict()
+    d["kid"] = ""  # invalid -> hits line 149
+    with pytest.raises(ValueError):
+        from_dict(d)
+
+
+def test_from_dict_rejects_falcon_alg_mismatch() -> None:
+    good = build_container("kid1", "PUB_ML", "PUB_FA")
+    d = good.to_dict()
+    d["falcon"]["alg"] = "wrong"  # -> hits line 160
+    with pytest.raises(ValueError):
+        from_dict(d)
+
+
+def test_from_dict_rejects_missing_falcon_public_key() -> None:
+    good = build_container("kid1", "PUB_ML", "PUB_FA")
+    d = good.to_dict()
+    d["falcon"]["public_key"] = ""  # -> hits line 165
+    with pytest.raises(ValueError):
+        from_dict(d)
+
+
+def test_from_dict_rejects_missing_container_hash() -> None:
+    good = build_container("kid1", "PUB_ML", "PUB_FA")
+    d = good.to_dict()
+    d["container_hash"] = ""  # -> hits line 173
+    with pytest.raises(ValueError):
+        from_dict(d)
