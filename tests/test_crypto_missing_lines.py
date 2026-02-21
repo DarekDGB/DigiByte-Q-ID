@@ -14,7 +14,7 @@ def test_generate_keypair_hits_unsupported_norm_branch(monkeypatch: pytest.Monke
 
 def test_sign_payload_rejects_unknown_algorithm() -> None:
     kp = QIDKeyPair(algorithm="weird", public_key=c._b64encode(b"p"), secret_key=c._b64encode(b"s"))
-    with pytest.raises(ValueError, match="Unsupported algorithm for signing"):
+    with pytest.raises(ValueError, match=r"Unknown Q-ID algorithm: 'weird'"):
         c.sign_payload({"x": 1}, kp)
 
 
