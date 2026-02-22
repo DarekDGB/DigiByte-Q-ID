@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 import hashlib
 import json
 from typing import Any, Dict, Optional, Tuple
@@ -30,7 +29,14 @@ class QIDServiceConfig:
 
 
 def _canon_json_bytes(obj: object) -> bytes:
-    """Deterministic JSON bytes for hashing (stable across languages)."""
+    """
+    Deterministic canonical JSON bytes for hashing.
+
+    Rules:
+    - sort_keys=True
+    - separators without whitespace
+    - ensure_ascii=True for stability across runtimes
+    """
     s = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return s.encode("utf-8")
 
@@ -50,13 +56,13 @@ def build_qid_login_uri(
     This is what a service would show as a QR code or deep-link for
     "Login with DigiByte Q-ID".
     """
-    request_payload = build_login_request_payload(
+    payload = build_login_request_payload(
         service_id=service.service_id,
         nonce=nonce,
         callback_url=service.callback_url,
         version=version,
     )
-    return build_login_request_uri(request_payload)
+    return build_login_request_uri(payload)
 
 
 def prepare_signed_login_response(
@@ -78,6 +84,10 @@ def prepare_signed_login_response(
     2. Ensure service_id + callback_url match the expected service.
     3. Build a login response payload using the wallet's address + key.
     4. Sign the payload with the selected keypair.
+
+    Optional Adamantine session binding:
+    - If now is provided, issued_at/expires_at are embedded inside the signed payload.
+    - expires_at = now + ttl_seconds
 
     Returns (response_payload, signature).
     """
@@ -127,13 +137,17 @@ def verify_signed_login_response_server(
     hybrid_container_b64: Optional[str] = None,
 ) -> bool:
     """
-    Server-side helper: parse a login URI and verify the signed response.
+    Reference server-side verification flow for a signed Q-ID login.
 
-    - Decodes the login request URI.
-    - Ensures service_id + callback_url match the expected service.
-    - Runs strict protocol verification (binding checks + signature verification).
+    It performs:
+    - decoding of the original login URI
+    - service_id + callback_url matching
+    - cryptographic verification via server_verify_login_response()
     """
-    request_payload = parse_login_request_uri(login_uri)
+    try:
+        request_payload = parse_login_request_uri(login_uri)
+    except Exception:
+        return False
 
     if request_payload.get("service_id") != service.service_id:
         return False
@@ -157,7 +171,15 @@ def build_adamantine_qid_evidence(
     hybrid_container_b64: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Build an AdamantineOS evidence object carrying a Q-ID login flow result.
+    Build an AdamantineOS evidence object carrying a Q-ID login flow result (v1).
+
+    v1 fields:
+      - v="1"
+      - kind="qid_login_v1"
+      - login_uri
+      - response_payload
+      - signature
+      - optional hybrid_container_b64
 
     Fail-closed rules:
     - Strict about top-level types.
@@ -196,10 +218,19 @@ def build_adamantine_qid_evidence_v2(
     """
     Build AdamantineOS evidence object for Q-ID login (v2).
 
-    v2 adds:
-      - subject: derived from signed response_payload["address"]
-      - proof_hash: sha256(canonical(response_payload))
-      - issued_at/expires_at are REQUIRED and MUST be inside signed payload
+    v2 fields:
+      - v="2"
+      - kind="qid_login_v2"
+      - login_uri
+      - response_payload  (MUST include issued_at/expires_at inside signed payload)
+      - signature
+      - subject           (derived from response_payload["address"])
+      - proof_hash        (sha256(canonical(response_payload)))
+      - optional hybrid_container_b64
+
+    Fail-closed rules:
+    - requires subject + proof_hash
+    - requires issued_at/expires_at as int and valid window ordering
     """
     if not isinstance(login_uri, str) or not login_uri:
         raise TypeError("login_uri must be a non-empty string")
@@ -250,6 +281,10 @@ def verify_adamantine_qid_evidence(
     """
     Verify an AdamantineOS evidence object for Q-ID login.
 
+    Supports:
+    - v1 (qid_login_v1)
+    - v2 (qid_login_v2) with subject/proof_hash consistency checks
+
     Fail-closed:
     - Any missing/wrong type => False
     - Any verification error => False
@@ -292,9 +327,7 @@ def verify_adamantine_qid_evidence(
                 return False
             if response_payload.get("address") != subject:
                 return False
-            expected_hash = _sha256_hex(_canon_json_bytes(response_payload))
-            if proof_hash != expected_hash:
-                return False
+
             issued_at = response_payload.get("issued_at")
             expires_at = response_payload.get("expires_at")
             if not isinstance(issued_at, int) or not isinstance(expires_at, int):
@@ -302,6 +335,12 @@ def verify_adamantine_qid_evidence(
             if issued_at <= 0 or expires_at <= 0 or issued_at >= expires_at:
                 return False
 
+            expected_hash = _sha256_hex(_canon_json_bytes(response_payload))
+            if proof_hash != expected_hash:
+                return False
+
+        # Note: hybrid_container_b64 is carried for Adamantine binding, but Q-ID login
+        # verification remains deterministic via the signed response check.
         return verify_signed_login_response_server(
             service=service,
             login_uri=login_uri,
