@@ -290,12 +290,15 @@ def login(
     keypair: QIDKeyPair,
     version: str = "1",
     key_id: str | None = None,
-    issued_at: int | None = None,
-    expires_at: int | None = None,
     hybrid_container_b64: Optional[str] = None,
 ) -> SignedMessage:
     """
     Convenience wrapper: build a login_request and signed login_response.
+
+    NOTE (API surface contract v0.1):
+    - We intentionally DO NOT expose issued_at/expires_at here.
+      Session windows for Adamantine evidence v2 are supported via
+      build_login_response_payload(..., issued_at=..., expires_at=...).
     """
     if not isinstance(service_id, str):
         raise TypeError("login(): service_id must be a str.")
@@ -317,8 +320,6 @@ def login(
         address=address,
         pubkey=pubkey,
         key_id=key_id,
-        issued_at=issued_at,
-        expires_at=expires_at,
         version=version,
     )
     return sign_message(resp, keypair, hybrid_container_b64=hybrid_container_b64)
