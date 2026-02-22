@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adamantine_qid_evidence_v2",
+  "title": "Adamantine Q-ID Evidence v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "kind",
+    "login_uri",
+    "response_payload",
+    "signature",
+    "subject",
+    "proof_hash"
+  ],
+  "properties": {
+    "v": { "type": "string", "const": "2" },
+    "kind": { "type": "string", "const": "qid_login_v2" },
+    "login_uri": { "type": "string", "minLength": 1 },
+    "response_payload": { "type": "object" },
+    "signature": { "type": "string", "minLength": 1 },
+    "subject": { "type": "string", "minLength": 1 },
+    "proof_hash": { "type": "string", "minLength": 1 },
+    "hybrid_container_b64": { "type": "string", "minLength": 1 }
+  }
+}
