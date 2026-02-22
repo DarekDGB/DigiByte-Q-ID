@@ -340,8 +340,6 @@ def build_dual_proof_login_response(
     ml_dsa_keypair: QIDKeyPair | None = None,
     falcon_keypair: QIDKeyPair | None = None,
     key_id: str | None = None,
-    issued_at: int | None = None,
-    expires_at: int | None = None,
     version: str = "1",
     hybrid_container_b64: Optional[str] = None,
 ) -> tuple[Dict[str, Any], str]:
@@ -355,6 +353,11 @@ def build_dual_proof_login_response(
     Notes:
     - PQC signing may raise PQCBackendError if caller selected a real backend but it's unavailable.
       Caller decides whether to surface or handle it.
+
+    API surface contract v0.1:
+    - We intentionally DO NOT add issued_at/expires_at parameters here.
+      Adamantine session windows (evidence v2) are supported via the non-dual-proof
+      login flow helpers and the integration adapter layer.
     """
     req_mode = _require_from_payload(request_payload)
     if req_mode != REQUIRE_DUAL_PROOF:
@@ -367,8 +370,6 @@ def build_dual_proof_login_response(
         address=address,
         pubkey=pubkey,
         key_id=key_id,
-        issued_at=issued_at,
-        expires_at=expires_at,
         version=version,
     )
 
