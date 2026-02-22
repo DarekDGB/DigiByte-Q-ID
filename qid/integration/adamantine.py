@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+import hashlib
+import json
 from typing import Any, Dict, Optional, Tuple
 
 from ..crypto import QIDKeyPair, sign_payload
@@ -26,6 +29,16 @@ class QIDServiceConfig:
     callback_url: str
 
 
+def _canon_json_bytes(obj: object) -> bytes:
+    """Deterministic JSON bytes for hashing (stable across languages)."""
+    s = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return s.encode("utf-8")
+
+
+def _sha256_hex(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+
+
 def build_qid_login_uri(
     service: QIDServiceConfig,
     nonce: str,
@@ -37,13 +50,13 @@ def build_qid_login_uri(
     This is what a service would show as a QR code or deep-link for
     "Login with DigiByte Q-ID".
     """
-    payload = build_login_request_payload(
+    request_payload = build_login_request_payload(
         service_id=service.service_id,
         nonce=nonce,
         callback_url=service.callback_url,
         version=version,
     )
-    return build_login_request_uri(payload)
+    return build_login_request_uri(request_payload)
 
 
 def prepare_signed_login_response(
@@ -52,6 +65,9 @@ def prepare_signed_login_response(
     address: str,
     keypair: QIDKeyPair,
     key_id: str | None = None,
+    *,
+    now: int | None = None,
+    ttl_seconds: int = 300,
     version: str = "1",
 ) -> Tuple[Dict[str, Any], str]:
     """
@@ -74,11 +90,26 @@ def prepare_signed_login_response(
     if request_payload.get("callback_url") != service.callback_url:
         raise ValueError("Q-ID login URI callback_url does not match expected service.")
 
+    issued_at: int | None
+    expires_at: int | None
+    if now is None:
+        issued_at = None
+        expires_at = None
+    else:
+        if not isinstance(now, int) or now <= 0:
+            raise ValueError("now must be a positive int")
+        if not isinstance(ttl_seconds, int) or ttl_seconds <= 0:
+            raise ValueError("ttl_seconds must be a positive int")
+        issued_at = now
+        expires_at = now + ttl_seconds
+
     response_payload = build_login_response_payload(
         request_payload=request_payload,
         address=address,
         pubkey=keypair.public_key,
         key_id=key_id,
+        issued_at=issued_at,
+        expires_at=expires_at,
         version=version,
     )
 
@@ -92,22 +123,17 @@ def verify_signed_login_response_server(
     response_payload: Dict[str, Any],
     signature: str,
     keypair: QIDKeyPair,
+    *,
+    hybrid_container_b64: Optional[str] = None,
 ) -> bool:
     """
-    Reference server-side verification flow for a signed Q-ID login.
+    Server-side helper: parse a login URI and verify the signed response.
 
-    This helper is what a backend / service could call after receiving a
-    login response from Adamantine.
-
-    It performs:
-    - decoding of the original login URI
-    - service_id + callback_url matching
-    - cryptographic verification via server_verify_login_response()
+    - Decodes the login request URI.
+    - Ensures service_id + callback_url match the expected service.
+    - Runs strict protocol verification (binding checks + signature verification).
     """
-    try:
-        request_payload = parse_login_request_uri(login_uri)
-    except Exception:
-        return False
+    request_payload = parse_login_request_uri(login_uri)
 
     if request_payload.get("service_id") != service.service_id:
         return False
@@ -119,6 +145,7 @@ def verify_signed_login_response_server(
         response_payload=response_payload,
         signature=signature,
         keypair=keypair,
+        hybrid_container_b64=hybrid_container_b64,
     )
 
 
@@ -159,6 +186,61 @@ def build_adamantine_qid_evidence(
     return evidence
 
 
+def build_adamantine_qid_evidence_v2(
+    *,
+    login_uri: str,
+    response_payload: Dict[str, Any],
+    signature: str,
+    hybrid_container_b64: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Build AdamantineOS evidence object for Q-ID login (v2).
+
+    v2 adds:
+      - subject: derived from signed response_payload["address"]
+      - proof_hash: sha256(canonical(response_payload))
+      - issued_at/expires_at are REQUIRED and MUST be inside signed payload
+    """
+    if not isinstance(login_uri, str) or not login_uri:
+        raise TypeError("login_uri must be a non-empty string")
+    if not isinstance(response_payload, dict):
+        raise TypeError("response_payload must be a dict")
+    if not isinstance(signature, str) or not signature:
+        raise TypeError("signature must be a non-empty string")
+    if hybrid_container_b64 is not None and (
+        not isinstance(hybrid_container_b64, str) or not hybrid_container_b64
+    ):
+        raise TypeError("hybrid_container_b64 must be a non-empty string if provided")
+
+    subject = response_payload.get("address")
+    issued_at = response_payload.get("issued_at")
+    expires_at = response_payload.get("expires_at")
+
+    if not isinstance(subject, str) or not subject:
+        raise TypeError("response_payload.address must be a non-empty string")
+    if not isinstance(issued_at, int) or not isinstance(expires_at, int):
+        raise TypeError("response_payload.issued_at/expires_at must be int")
+    if issued_at <= 0 or expires_at <= 0:
+        raise ValueError("response_payload.issued_at/expires_at must be positive")
+    if issued_at >= expires_at:
+        raise ValueError("response_payload.expires_at must be greater than issued_at")
+
+    proof_hash = _sha256_hex(_canon_json_bytes(response_payload))
+
+    evidence: Dict[str, Any] = {
+        "v": "2",
+        "kind": "qid_login_v2",
+        "login_uri": login_uri,
+        "response_payload": response_payload,
+        "signature": signature,
+        "subject": subject,
+        "proof_hash": proof_hash,
+    }
+    if hybrid_container_b64 is not None:
+        evidence["hybrid_container_b64"] = hybrid_container_b64
+    return evidence
+
+
 def verify_adamantine_qid_evidence(
     *,
     service: QIDServiceConfig,
@@ -176,9 +258,13 @@ def verify_adamantine_qid_evidence(
         if not isinstance(evidence, dict):
             return False
 
-        if evidence.get("v") != "1":
+        v = evidence.get("v")
+        kind = evidence.get("kind")
+        if v not in ("1", "2"):
             return False
-        if evidence.get("kind") != "qid_login_v1":
+        if v == "1" and kind != "qid_login_v1":
+            return False
+        if v == "2" and kind != "qid_login_v2":
             return False
 
         login_uri = evidence.get("login_uri")
@@ -197,14 +283,32 @@ def verify_adamantine_qid_evidence(
         ):
             return False
 
-        # Note: hybrid_container_b64 is carried for Adamantine binding, but Q-ID login
-        # verification remains deterministic via the signed response check.
+        if v == "2":
+            subject = evidence.get("subject")
+            proof_hash = evidence.get("proof_hash")
+            if not isinstance(subject, str) or not subject:
+                return False
+            if not isinstance(proof_hash, str) or not proof_hash:
+                return False
+            if response_payload.get("address") != subject:
+                return False
+            expected_hash = _sha256_hex(_canon_json_bytes(response_payload))
+            if proof_hash != expected_hash:
+                return False
+            issued_at = response_payload.get("issued_at")
+            expires_at = response_payload.get("expires_at")
+            if not isinstance(issued_at, int) or not isinstance(expires_at, int):
+                return False
+            if issued_at <= 0 or expires_at <= 0 or issued_at >= expires_at:
+                return False
+
         return verify_signed_login_response_server(
             service=service,
             login_uri=login_uri,
             response_payload=response_payload,
             signature=signature,
             keypair=keypair,
+            hybrid_container_b64=hybrid_container_b64,
         )
     except Exception:
         return False
