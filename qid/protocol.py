@@ -144,6 +144,9 @@ def build_login_response_payload(
     address: str,
     pubkey: str,
     key_id: str | None = None,
+    *,
+    issued_at: int | None = None,
+    expires_at: int | None = None,
     version: str = "1",
 ) -> Dict[str, Any]:
     service_id = request_payload.get("service_id")
@@ -166,6 +169,19 @@ def build_login_response_payload(
     }
     if key_id is not None:
         payload["key_id"] = key_id
+
+    # Optional signed session window (used by Adamantine evidence v2).
+    # Must be inside the signed payload so it cannot be edited by an attacker.
+    if issued_at is not None or expires_at is not None:
+        if not isinstance(issued_at, int) or not isinstance(expires_at, int):
+            raise ValueError("issued_at/expires_at must be int when provided")
+        if issued_at <= 0 or expires_at <= 0:
+            raise ValueError("issued_at/expires_at must be positive")
+        if issued_at >= expires_at:
+            raise ValueError("expires_at must be greater than issued_at")
+        payload["issued_at"] = issued_at
+        payload["expires_at"] = expires_at
+
     return payload
 
 
@@ -274,6 +290,8 @@ def login(
     keypair: QIDKeyPair,
     version: str = "1",
     key_id: str | None = None,
+    issued_at: int | None = None,
+    expires_at: int | None = None,
     hybrid_container_b64: Optional[str] = None,
 ) -> SignedMessage:
     """
@@ -299,6 +317,8 @@ def login(
         address=address,
         pubkey=pubkey,
         key_id=key_id,
+        issued_at=issued_at,
+        expires_at=expires_at,
         version=version,
     )
     return sign_message(resp, keypair, hybrid_container_b64=hybrid_container_b64)
@@ -320,6 +340,8 @@ def build_dual_proof_login_response(
     ml_dsa_keypair: QIDKeyPair | None = None,
     falcon_keypair: QIDKeyPair | None = None,
     key_id: str | None = None,
+    issued_at: int | None = None,
+    expires_at: int | None = None,
     version: str = "1",
     hybrid_container_b64: Optional[str] = None,
 ) -> tuple[Dict[str, Any], str]:
@@ -345,6 +367,8 @@ def build_dual_proof_login_response(
         address=address,
         pubkey=pubkey,
         key_id=key_id,
+        issued_at=issued_at,
+        expires_at=expires_at,
         version=version,
     )
 
