@@ -6,19 +6,18 @@ Copyright (c) 2025 DarekDGB
 
 ## Quantum-Ready Authentication Protocol with Signed Payloads & Optional PQC Backends
 
-### Stable Release v1.0.0 (Contract-Locked)
+### Stable Contract Baseline v1.0.0 · Hardening In Progress
 
 ------------------------------------------------------------------------
 
 ## 🟢 Release & Status
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![CI](https://img.shields.io/badge/CI-passing-brightgreen) ![PQC
-Optional](https://img.shields.io/badge/PQC--Optional-liboqs--supported-success)
-![Adamantine
-Integration](https://img.shields.io/badge/Adamantine-Integration-success)
-![Guardian
-Integration](https://img.shields.io/badge/Guardian-Integration-success)
+![CI](https://img.shields.io/badge/CI-passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![PQC Optional](https://img.shields.io/badge/PQC--Optional-liboqs--supported-success)
+![Adamantine Integration](https://img.shields.io/badge/Adamantine-Integration-success)
+![Guardian Integration](https://img.shields.io/badge/Guardian-Integration-success)
 ![ML-DSA](https://img.shields.io/badge/PQC-ML--DSA-informational)
 ![Falcon](https://img.shields.io/badge/PQC-Falcon-informational)
 
@@ -32,7 +31,7 @@ Integration](https://img.shields.io/badge/Guardian-Integration-success)
 
 # 🧭 Architecture Overview
 
-``` mermaid
+```mermaid
 flowchart LR
     Service -->|QR Login Request| Wallet
     Wallet -->|Signed Login Response| Service
@@ -50,19 +49,19 @@ flowchart LR
 Q-ID is a **cryptographically signed authentication protocol**
 providing:
 
--   Deterministic payload signing
--   Strict verification rules
--   Replay protection (nonce-based)
--   Optional Post-Quantum Cryptography (PQC)
--   Hybrid (dual-algorithm) enforcement
--   Fail-closed semantics
+- Deterministic payload signing
+- Strict verification rules
+- Replay protection (nonce-based)
+- Optional Post-Quantum Cryptography (PQC)
+- Hybrid (dual-algorithm) enforcement
+- Fail-closed semantics
 
 Q-ID is NOT:
 
--   A wallet
--   A custody solution
--   A background service
--   An automatic PQC switcher
+- A wallet
+- A custody solution
+- A background service
+- An automatic PQC switcher
 
 Integration is explicit and controlled by wallets/services.
 
@@ -72,20 +71,20 @@ Integration is explicit and controlled by wallets/services.
 
 Non-negotiable properties:
 
--   **Fail-closed**
--   **Deterministic canonical JSON**
--   **No silent fallback**
--   **Explicit PQC opt-in**
--   **Hybrid = strict AND**
--   **Test-locked contracts**
--   **CI-enforced coverage (≥90%)**
+- **Fail-closed**
+- **Deterministic canonical JSON**
+- **No silent fallback**
+- **Explicit PQC opt-in**
+- **Hybrid = strict AND**
+- **Test-locked contracts**
+- **CI-enforced coverage (100%)**
 
 ------------------------------------------------------------------------
 
 # 3️⃣ High-Level Flow
 
-Service → QR Login Request → Wallet\
-Wallet → Signed Login Response → Service\
+Service → QR Login Request → Wallet  
+Wallet → Signed Login Response → Service  
 Service → Verify → Accept / Reject
 
 ------------------------------------------------------------------------
@@ -93,6 +92,7 @@ Service → Verify → Accept / Reject
 # 4️⃣ Repository Structure
 
     qid/
+    ├─ canonical.py
     ├─ crypto.py
     ├─ protocol.py
     ├─ binding.py
@@ -109,12 +109,12 @@ Service → Verify → Accept / Reject
 
 # 5️⃣ Cryptographic Algorithms
 
-  Identifier                   Purpose            Mode
-  ---------------------------- ------------------ ---------------
-  `dev-hmac-sha256`            CI / development   Stub
-  `pqc-ml-dsa`                 ML-DSA             Stub → liboqs
-  `pqc-falcon`                 Falcon             Stub → liboqs
-  `pqc-hybrid-ml-dsa-falcon`   Hybrid             Strict AND
+| Identifier | Purpose | Mode |
+|---|---|---|
+| `dev-hmac-sha256` | CI / development | Stub |
+| `pqc-ml-dsa` | ML-DSA | Stub → liboqs |
+| `pqc-falcon` | Falcon | Stub → liboqs |
+| `pqc-hybrid-ml-dsa-falcon` | Hybrid | Strict AND |
 
 Legacy alias: `hybrid-dev-ml-dsa` (compatibility only)
 
@@ -124,12 +124,14 @@ Legacy alias: `hybrid-dev-ml-dsa` (compatibility only)
 
 ### Default (CI-Safe)
 
--   No external crypto dependencies
--   Deterministic testable signatures
+- No external crypto dependencies
+- Deterministic testable signatures
+- Default CI path
+- Real backend not assumed
 
 ### Real PQC Mode
 
-``` bash
+```bash
 export QID_PQC_BACKEND=liboqs
 export QID_PQC_TESTS=1
 ```
@@ -142,8 +144,8 @@ Explicit opt-in only.
 
 Hybrid verification requires:
 
--   ML-DSA valid
--   Falcon valid
+- ML-DSA valid
+- Falcon valid
 
 If either fails → authentication fails.
 
@@ -159,11 +161,8 @@ Module:
 
 Provides:
 
--   Evidence builder
--   Evidence verifier
-
-Purpose: Convert Q-ID login artifacts into deterministic
-execution-boundary evidence.
+- Evidence builder
+- Evidence verifier
 
 ------------------------------------------------------------------------
 
@@ -175,43 +174,51 @@ Module:
 
 Provides:
 
--   Event builder
--   Structural validator
-
-Purpose: Convert verified login artifacts into strict policy-engine
-events.
+- Event builder
+- Structural validator
 
 ------------------------------------------------------------------------
 
 # 🔟 Test Suite & CI
 
--   ≥90% coverage enforced
--   CI-safe default
--   Optional real-PQC workflow
--   No silent fallback
+- 100% coverage enforced in default CI
+- CI-safe default execution path
+- Optional real-PQC workflow
+- No silent fallback
+- Canonical JSON serialization locked by tests
 
 ------------------------------------------------------------------------
 
-# 11️⃣ Stability Guarantees (v1.0.0)
+# 11️⃣ Versioning Truth
 
--   Stable API surface
--   Stable protocol behavior
--   Stable integration adapters
--   Breaking changes require major version bump
+Current package metadata remains:
 
-------------------------------------------------------------------------
-
-# 12️⃣ Summary
-
-✔ Signed authentication\
-✔ Optional PQC backend\
-✔ Hybrid strict enforcement\
-✔ Fail-closed verification\
-✔ Adamantine adapter\
-✔ Guardian adapter\
-✔ Stable v1.0.0
+- **Package version:** `1.0.0`
+- **Stable contract baseline:** `v1.0.0`
 
 ------------------------------------------------------------------------
 
-**MIT License --- © 2025 DarekDGB**\
+# 12️⃣ Stability Guarantees
+
+- Stable API surface
+- Stable protocol behavior
+- Stable integration adapters
+- Breaking changes require major version bump
+
+------------------------------------------------------------------------
+
+# 13️⃣ Summary
+
+✔ Signed authentication  
+✔ Optional PQC backend  
+✔ Hybrid strict enforcement  
+✔ Fail-closed verification  
+✔ Canonical JSON hardening  
+✔ Adamantine adapter  
+✔ Guardian adapter  
+✔ Stable contract baseline
+
+------------------------------------------------------------------------
+
+**MIT License — © 2025 DarekDGB**  
 *Q-ID does not guess. It verifies.*
