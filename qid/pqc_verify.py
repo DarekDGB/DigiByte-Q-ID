@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import base64
-import json
 from typing import Any, Mapping
 
+from qid.canonical import canonical_json_bytes
 from qid.pqc_backends import (
     FALCON_ALGO,
     HYBRID_ALGO,
@@ -31,7 +31,7 @@ def _b64url_decode(s: str) -> bytes:
 
 def canonical_payload_bytes(payload: Mapping[str, Any]) -> bytes:
     """Canonical JSON bytes for signing/verifying."""
-    return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return canonical_json_bytes(payload)
 
 
 def _payload_for_pqc(src: Mapping[str, Any]) -> dict[str, Any]:
