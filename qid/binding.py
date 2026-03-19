@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import time
 from typing import Any, Dict, Mapping, Optional, TypedDict, Literal
 
+from qid.canonical import canonical_json_bytes
 from qid.crypto import QIDKeyPair, sign_payload, verify_payload
 
 BindingPolicy = Literal["ml-dsa", "falcon", "hybrid"]
@@ -49,11 +49,6 @@ def _b64url_encode(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
-def _canonical_json(obj: Mapping[str, Any]) -> bytes:
-    # Deterministic JSON used across the repo (same settings as qid.crypto).
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-
-
 def normalize_domain(domain: str) -> str:
     """
     Domain normalization rule (v1):
@@ -77,7 +72,7 @@ def compute_binding_id(payload: BindingPayload) -> str:
     """
     Deterministic binding_id = b64url(sha256(canonical_json(payload))).
     """
-    raw = _canonical_json(payload)
+    raw = canonical_json_bytes(payload)
     h = hashlib.sha256(raw).digest()
     return _b64url_encode(h)
 
