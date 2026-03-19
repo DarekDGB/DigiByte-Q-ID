@@ -15,7 +15,6 @@ Contract:
 """
 
 import base64
-import json
 from typing import Any, Mapping, MutableMapping
 
 from .pqc_backends import (
@@ -27,6 +26,7 @@ from .pqc_backends import (
     liboqs_sign,
     selected_backend,
 )
+from .canonical import canonical_json_bytes
 from .crypto import QIDKeyPair
 
 _SIG_FIELDS = {"pqc_sig", "pqc_sig_ml_dsa", "pqc_sig_falcon"}
@@ -42,7 +42,7 @@ def _b64url_decode(s: str) -> bytes:
 
 
 def canonical_payload_bytes(payload: Mapping[str, Any]) -> bytes:
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return canonical_json_bytes(payload)
 
 
 def _payload_for_pqc(login_payload: Mapping[str, Any]) -> dict[str, Any]:
