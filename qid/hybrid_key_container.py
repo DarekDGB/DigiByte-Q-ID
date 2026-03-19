@@ -11,6 +11,7 @@ import hashlib
 import json
 from typing import Any, Dict, Mapping, Optional, Union, cast
 
+from .canonical import canonical_json_bytes
 from .crypto import FALCON_ALGO, HYBRID_ALGO, ML_DSA_ALGO
 
 
@@ -20,10 +21,6 @@ _CONTAINER_VERSION = 1
 # -------------------------
 # helpers (deterministic)
 # -------------------------
-
-
-def _canonical_json(obj: Any) -> bytes:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
 def _b64_std_encode(b: bytes) -> str:
@@ -112,7 +109,7 @@ def compute_container_hash(obj: Union[HybridKeyContainer, Mapping[str, Any], str
     container_hash = base64( sha256( canonical_json(public_view) ) )
     """
     pv = public_view_dict(obj)
-    digest = hashlib.sha256(_canonical_json(pv)).digest()
+    digest = hashlib.sha256(canonical_json_bytes(pv)).digest()
     return _b64_std_encode(digest)
 
 
@@ -228,7 +225,7 @@ def encode_container(container: Union[HybridKeyContainer, Mapping[str, Any]]) ->
         d = dict(container)
 
     _validate_container_dict(d)
-    return _b64_std_encode(_canonical_json(d))
+    return _b64_std_encode(canonical_json_bytes(d))
 
 
 def decode_container(b64: str) -> HybridKeyContainer:
