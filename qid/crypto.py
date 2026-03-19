@@ -22,6 +22,8 @@ import secrets
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
 
+from qid.canonical import canonical_json_bytes
+
 
 DEV_ALGO = "dev-hmac-sha256"
 ML_DSA_ALGO = "pqc-ml-dsa"
@@ -50,10 +52,6 @@ def _b64decode(s: str) -> bytes:
     return base64.b64decode(s.encode("ascii"))
 
 
-def _canonical_json(obj: Mapping[str, Any]) -> bytes:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-
-
 def _normalize_alg(alg: str) -> str:
     if alg == _LEGACY_HYBRID_ALGO:
         return HYBRID_ALGO
@@ -61,7 +59,7 @@ def _normalize_alg(alg: str) -> str:
 
 
 def _envelope_encode(d: Mapping[str, Any]) -> str:
-    return _b64encode(_canonical_json(d))
+    return _b64encode(canonical_json_bytes(d))
 
 
 def _envelope_decode(sig_b64: str) -> Dict[str, Any]:
@@ -186,7 +184,7 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
     if alg not in _ALLOWED_ALGOS:
         raise ValueError(f"Unknown Q-ID algorithm: {keypair.algorithm!r}")
 
-    msg = _canonical_json(payload)
+    msg = canonical_json_bytes(payload)
     backend = selected_backend()
 
     if backend is not None and alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
@@ -255,7 +253,7 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
     except Exception:
         return False
 
-    msg = _canonical_json(payload)
+    msg = canonical_json_bytes(payload)
     backend = selected_backend()
 
     if backend is not None and alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
