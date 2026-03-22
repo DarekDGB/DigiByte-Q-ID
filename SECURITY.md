@@ -3,140 +3,172 @@ MIT License
 Copyright (c) 2025 DarekDGB
 -->
 
-# 🔐 Security Policy — DigiByte Q-ID
+# SECURITY POLICY
 
-## Scope
-
-This document defines the **security policy** for the DigiByte Q-ID repository.
-
-It applies to:
-- Core protocol logic
-- Cryptographic signing and verification
-- PQC and hybrid backends
-- CI enforcement and fail-closed behavior
-- Documentation and contracts that affect security guarantees
-
-Q-ID is **security‑critical software**.
+## DigiByte Q-ID — v1.0.1
 
 ---
 
-## Supported Versions
+## 🛡️ Security Philosophy
 
-Only the latest **ci-locked** release is considered supported.
+Q-ID is built on strict, non-negotiable principles:
 
-| Version | Status |
-|-------|--------|
-| v0.1.1-ci-locked | ✅ Supported |
-| Older tags | ❌ Unsupported |
+- Fail-closed by default
+- Deterministic behavior only
+- No silent fallback
+- Explicit cryptographic intent
+- Test-locked guarantees
 
-Security issues discovered in unsupported versions **will not** be patched.
-
----
-
-## Security Guarantees
-
-Q-ID is designed around the following non-negotiable principles:
-
-- **Fail-closed by default**  
-  Any invalid, malformed, missing, or downgraded input causes verification failure.
-
-- **No silent cryptographic fallback**  
-  If a real PQC backend is required and unavailable, operations fail explicitly.
-
-- **Deterministic signing & verification**  
-  Canonical JSON encoding is enforced across all cryptographic operations.
-
-- **Explicit algorithm binding**  
-  Every signature is bound to a declared algorithm identifier.
-
-- **Hybrid means AND, never OR**  
-  Hybrid signatures require *all* components to verify successfully.
-
-- **CI-enforced invariants**  
-  Security properties are locked by automated tests and coverage gates.
+If something is uncertain → it must FAIL.
 
 ---
 
-## Out of Scope
+## 🔒 Core Security Guarantees
 
-The following are explicitly **out of scope** for Q-ID:
+### 1. Fail-Closed Enforcement
+All verification paths MUST:
 
-- Wallet key custody and storage
-- UI/UX security
-- Transport security (HTTPS, TLS)
-- Session management after authentication
-- User device compromise
-- Hardware wallet implementations
+- Reject invalid input
+- Reject malformed payloads
+- Reject missing fields
+- Reject unexpected structures
 
-Q-ID produces **signed authentication events**.  
-How they are stored, transported, or acted upon is the responsibility of integrators.
+No recovery paths.  
+No soft failures.  
+No partial success.
 
 ---
 
-## Reporting a Vulnerability
+### 2. Deterministic Canonicalization
 
-If you discover a security issue:
+All security-critical serialization uses:
 
-1. **Do not open a public issue**
-2. Do **not** disclose details publicly
-3. Contact the maintainer privately
+    qid.canonical.canonical_json_bytes
 
-### Contact
+This ensures:
 
-- GitHub: @DarekDGB  
-- Preferred channel: private GitHub message
+- identical signing and verification bytes
+- no cross-module drift
+- stable hashing and binding IDs
+
+Any deviation is considered a security violation.
+
+---
+
+### 3. No Silent Fallback
+
+If a cryptographic backend is required:
+
+- It MUST exist
+- It MUST be used
+- If unavailable → FAIL
+
+Never fallback silently to stub or alternative logic.
+
+---
+
+### 4. PQC Backend Rules
+
+Default mode:
+- Stub (CI-safe)
+
+Optional real PQC:
+
+    QID_PQC_BACKEND=liboqs
+    QID_PQC_TESTS=1
+
+Rules:
+- Explicit opt-in only
+- Backend must be present
+- Missing backend → FAIL
+
+---
+
+### 5. Hybrid Signature Enforcement
+
+Hybrid mode = strict AND
+
+- ML-DSA must verify
+- Falcon must verify
+- Any failure → full rejection
+
+No downgrade allowed.
+
+---
+
+### 6. Signature Integrity
+
+- Payload must be signed exactly as verified
+- No transformation allowed between sign and verify
+- Canonical bytes must match exactly
+
+---
+
+## ⚠️ Threat Model
+
+Q-ID is designed to resist:
+
+- serialization inconsistencies
+- replay attacks (nonce-based flows)
+- signature tampering
+- downgrade attacks
+- partial verification bypass
+- backend misconfiguration
+
+---
+
+## 🚫 Explicit Non-Goals
+
+Q-ID does NOT:
+
+- store private keys
+- manage custody
+- auto-select cryptographic backends
+- perform implicit recovery
+
+---
+
+## 🧪 Security Validation
+
+Security is enforced through:
+
+- 100% test coverage (CI enforced)
+- canonicalization regression tests
+- fail-closed path testing
+- hybrid verification tests
+- PQC backend enforcement tests
+
+---
+
+## 📢 Reporting Vulnerabilities
+
+If you discover a security issue, report it privately:
+
+📧 adamantinewalletos@gmail.com
 
 Please include:
-- Clear description of the issue
-- Impact assessment
-- Reproduction steps (if possible)
-- Suggested mitigation (optional)
+
+- clear description
+- reproduction steps
+- impact assessment (if known)
 
 ---
 
-## Response Process
+## 📦 Version Scope
 
-Valid security reports will be:
+This policy applies to:
 
-1. Acknowledged privately
-2. Reproduced and assessed
-3. Fixed with a regression test
-4. Released in a new **ci-locked** tag
-5. Documented in release notes
-
-No fix is considered complete without **tests and CI validation**.
+- Q-ID v1.0.1
+- All subsequent hardening releases unless explicitly changed
 
 ---
 
-## Security Review Expectations
+## 🛡️ Final Principle
 
-All contributions must:
-
-- Preserve existing security invariants
-- Add tests for new security-relevant behavior
-- Avoid broad exception catching
-- Avoid implicit defaults or fallbacks
-- Maintain deterministic behavior
-
-Pull requests that weaken security guarantees **will be rejected**.
+Q-ID does not guess.  
+Q-ID does not fallback.  
+Q-ID verifies.
 
 ---
 
-## Philosophy
-
-> Security is not a feature.  
-> It is an invariant.
-
-Q-ID is designed to survive:
-- cryptographic transitions
-- ecosystem evolution
-- future threat models
-
-Changes are intentional.  
-Silence is failure.  
-Explicit rejection is safety.
-
----
-
-**MIT Licensed — @DarekDGB**  
-Quantum‑ready. Deterministic. Fail‑closed.
+© DarekDGB
