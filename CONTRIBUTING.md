@@ -1,121 +1,134 @@
-# Contributing to DigiByte Q-ID
+# CONTRIBUTING
 
-DigiByte Q-ID is a **post-quantum identity system** designed to provide:
-- secure user identity,
-- PQC signatures and verification,
-- encrypted profile storage,
-- recovery mechanisms,
-- and clean integration paths for wallets, DigiAssets, or shield components.
-
-This repository defines **identity logic only**.  
-It does *not* implement wallet features, shield behaviour, or consensus rules.  
-Contributions must preserve this separation.
+## DigiByte Q-ID — v1.0.1
 
 ---
 
-## ✅ What Contributions Are Welcome
+## 🧭 Contribution Philosophy
 
-### ✔ PQC Improvements
-- enhancements to Falcon/Dilithium signer or verifier backends  
-- better key derivation logic  
-- safer recovery workflows  
+This is a **security-critical repository**.
 
-### ✔ Identity System Extensions
-- enriched `identity_state` handling  
-- improved encrypted storage patterns  
-- UX-safe backup / restore logic  
+Contributions are welcome, but must follow strict rules:
 
-### ✔ Protocol Enhancements
-- improved handshake logic  
-- better authentication flow  
-- channel upgrades  
-- clearer error handling  
+- Deterministic behavior only
+- Fail-closed logic
+- No silent fallback
+- No hidden side effects
+- Tests define truth
 
-### ✔ Integrations
-Extensions to:
-- `wallet_adapter.py`  
-- `shield_adapter.py`  
-- `assets_adapter.py`  
-
-are welcome **as long as Q-ID stays identity-focused**.
-
-### ✔ Documentation
-Improvements to the docs under `docs/`:
-- Identity Model  
-- PQC backend  
-- Recovery  
-- Architecture  
+If unsure → do not assume → ask.
 
 ---
 
-## ❌ What Will NOT Be Accepted
+## 🔒 Core Rules (Non-Negotiable)
 
-### 🚫 1. Mixing Identity Logic With Wallet Logic  
-Q-ID must stay independent.  
-No:
-- transaction code  
-- wallet UI  
-- shield decisions  
-- asset logic  
-- network code  
+### 1. Fail-Closed Only
+- Any invalid state MUST return failure
+- Never auto-correct or recover silently
 
-### 🚫 2. Moving Encryption or Key Logic Outside the Identity Layer  
-All cryptography must remain inside:
-- `core/`   
-- `storage/`  
+### 2. Deterministic Canonicalization
+- Always use:
 
-### 🚫 3. Introducing Black-Box ML or Non-Deterministic Behaviour  
-Q-ID must remain:
-- explainable  
-- auditable  
-- deterministic  
+    qid.canonical.canonical_json_bytes
 
-### 🚫 4. Modifying DigiByte Consensus  
-Q-ID is strictly an **identity layer**, not a blockchain protocol.
+- Never introduce custom JSON serialization
+
+### 3. No Silent Fallback
+- If backend / dependency missing → FAIL
+- Never fallback automatically
+
+### 4. Hybrid = AND
+- ML-DSA AND Falcon must both verify
+- No OR logic allowed
 
 ---
 
-## 🧱 Design Principles
+## 🧪 Testing Requirements
 
-1. **Identity First** — Q-ID is not a wallet, asset system, or shield engine.  
-2. **Modularity** — components must remain isolated and replaceable.  
-3. **PQC-Ready** — cryptography must support post-quantum security.  
-4. **Explainability** — no hidden logic.  
-5. **Determinism** — given the same inputs, identity operations must yield the same outputs.  
-6. **Security by Default** — encrypted storage and recovery must be safe and predictable.  
+Every change MUST:
 
----
+- Maintain **100% coverage**
+- Include regression tests
+- Include negative (failure) tests
+- Pass CI with zero warnings
 
-## 🔄 Pull Request Requirements
-
-Every PR must include:
-
-- a clear explanation of the change  
-- tests for new logic (`tests/`)  
-- updated docs if needed  
-- confirmation that architecture boundaries remain intact  
-
-Architectural direction is guided by **@DarekDGB**.  
-Developers review implementation quality and CI health.
+If coverage drops → PR rejected
 
 ---
 
-## 🧪 Testing
+## 🧱 Code Standards
 
-The test suite validates:
-
-- PQC sign & verify  
-- identity state transitions  
-- encrypted storage  
-- recovery flows  
-- protocol handshakes  
-- integration behaviour  
-
-New features **must** include new tests.
+- No global state
+- Explicit inputs only
+- Explicit outputs only
+- No hidden mutation
+- Type-safe functions
 
 ---
 
-## 📝 License
+## 📦 Allowed Changes
 
-By contributing, you agree that your work is licensed under the MIT License.  
-© 2025 **DarekDGB**
+- Bug fixes (with regression test)
+- Documentation improvements
+- Test improvements
+- Hardening (non-breaking)
+
+---
+
+## 🚫 Forbidden Changes
+
+- Silent behavior changes
+- Partial validation
+- Optional failure paths
+- Changing canonicalization rules
+- Reducing test coverage
+
+---
+
+## 🔄 Pull Request Process
+
+1. Fork repo
+2. Create branch
+3. Implement change
+4. Add tests
+5. Run CI locally (if possible)
+6. Submit PR
+
+PR must include:
+
+- clear description
+- reasoning
+- test proof
+
+---
+
+## 🛡️ Review Standard
+
+All PRs are reviewed with:
+
+- security-first mindset
+- fail-closed enforcement
+- determinism verification
+- test coverage validation
+
+---
+
+## 📢 Questions / Contact
+
+For questions or coordination:
+
+📧 adamantinewalletos@gmail.com
+
+---
+
+## 🧠 Final Principle
+
+Do not guess.  
+Do not assume.  
+Do not weaken invariants.
+
+Only build what can be verified.
+
+---
+
+© DarekDGB
