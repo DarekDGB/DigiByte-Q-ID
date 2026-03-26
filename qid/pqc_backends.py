@@ -89,7 +89,7 @@ def _import_oqs() -> Any:
     except Exception as e:
         raise PQCBackendError("oqs import failed") from e
 
-    # force coverage branch
+    # coverage branch (safe, deterministic)
     if real_oqs is None:
         raise PQCBackendError("oqs import returned None")
 
@@ -142,10 +142,20 @@ def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
 
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import sign_ml_dsa
-            return sign_ml_dsa(oqs=mod, msg=message, priv=secret_key, oqs_alg=oqs_alg)
+            return sign_ml_dsa(
+                oqs=mod,
+                msg=message,
+                priv=secret_key,
+                oqs_alg=oqs_alg,
+            )
 
         from qid.pqc.pqc_falcon import sign_falcon
-        return sign_falcon(oqs=mod, msg=message, priv=secret_key, oqs_alg=oqs_alg)
+        return sign_falcon(
+            oqs=mod,
+            msg=message,
+            priv=secret_key,
+            oqs_alg=oqs_alg,
+        )
 
     except PQCBackendError:
         raise
@@ -198,7 +208,5 @@ def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: by
 
     except PQCBackendError:
         raise
-    except Exception as e:
-        if selected_backend() is not None:
-            raise PQCBackendError("liboqs verify failed") from e
+    except Exception:
         return False
