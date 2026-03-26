@@ -22,18 +22,18 @@ import secrets
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
 
+from qid.algorithms import (
+    ALLOWED_ALGOS,
+    DEV_ALGO,
+    FALCON_ALGO,
+    HYBRID_ALGO,
+    LEGACY_HYBRID_ALGO,
+    ML_DSA_ALGO,
+    normalize_alg,
+)
 from qid.canonical import canonical_json_bytes
 
 
-DEV_ALGO = "dev-hmac-sha256"
-ML_DSA_ALGO = "pqc-ml-dsa"
-FALCON_ALGO = "pqc-falcon"
-HYBRID_ALGO = "pqc-hybrid-ml-dsa-falcon"
-
-# Legacy alias expected by tests/back-compat
-_LEGACY_HYBRID_ALGO = "hybrid-dev-ml-dsa"
-
-_ALLOWED_ALGOS = {DEV_ALGO, ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO, _LEGACY_HYBRID_ALGO}
 _SIG_ENVELOPE_VERSION = 1
 
 
@@ -53,9 +53,7 @@ def _b64decode(s: str) -> bytes:
 
 
 def _normalize_alg(alg: str) -> str:
-    if alg == _LEGACY_HYBRID_ALGO:
-        return HYBRID_ALGO
-    return alg
+    return normalize_alg(alg)
 
 
 def _envelope_encode(d: Mapping[str, Any]) -> str:
@@ -137,7 +135,7 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
       So, when explicitly opted in (QID_PQC_TESTS=1 + QID_PQC_BACKEND=liboqs and oqs installed),
       we generate a real liboqs keypair for ML-DSA / Falcon.
     """
-    if alg not in _ALLOWED_ALGOS:
+    if alg not in ALLOWED_ALGOS:
         raise ValueError(f"Unknown Q-ID algorithm: {alg!r}")
 
     norm = _normalize_alg(alg)
@@ -152,7 +150,6 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
             pqc_tests = os.getenv("QID_PQC_TESTS", "").strip()
 
             if backend == "liboqs" and pqc_tests == "1" and importlib.util.find_spec("oqs") is not None:
-                # Keep this import INSIDE the opt-in branch to preserve CI-safe default behavior.
                 from qid.pqc.keygen_liboqs import generate_falcon_keypair, generate_ml_dsa_keypair
 
                 if norm == ML_DSA_ALGO:
@@ -160,9 +157,12 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
                 else:
                     pub, sec = generate_falcon_keypair("Falcon-512")
 
-                return QIDKeyPair(algorithm=norm, secret_key=_b64encode(sec), public_key=_b64encode(pub))
+                return QIDKeyPair(
+                    algorithm=norm,
+                    secret_key=_b64encode(sec),
+                    public_key=_b64encode(pub),
+                )
         except Exception:
-            # Fall back to CI-safe stub keypair.
             pass
 
     if norm == DEV_ALGO:
@@ -181,14 +181,13 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
     from qid.hybrid_key_container import try_decode_container
 
     alg = _normalize_alg(keypair.algorithm)
-    if alg not in _ALLOWED_ALGOS:
+    if alg not in ALLOWED_ALGOS:
         raise ValueError(f"Unknown Q-ID algorithm: {keypair.algorithm!r}")
 
     msg = canonical_json_bytes(payload)
     backend = selected_backend()
 
     if backend is not None and alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
-        # Real backend selected: enforce no silent fallback at signing time.
         enforce_no_silent_fallback_for_alg(alg)
 
         if alg in (ML_DSA_ALGO, FALCON_ALGO):
@@ -217,11 +216,13 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
             {
                 "v": _SIG_ENVELOPE_VERSION,
                 "alg": HYBRID_ALGO,
-                "sigs": {ML_DSA_ALGO: _b64encode(sig_ml), FALCON_ALGO: _b64encode(sig_fa)},
+                "sigs": {
+                    ML_DSA_ALGO: _b64encode(sig_ml),
+                    FALCON_ALGO: _b64encode(sig_fa),
+                },
             }
         )
 
-    # Stub signing (CI-safe)
     secret = _b64decode(keypair.secret_key)
 
     if alg == DEV_ALGO:
@@ -235,7 +236,11 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
     if alg == HYBRID_ALGO:
         sigs = _stub_sign_hybrid(msg, secret)
         return _envelope_encode(
-            {"v": _SIG_ENVELOPE_VERSION, "alg": HYBRID_ALGO, "sigs": {k: _b64encode(v) for k, v in sigs.items()}}
+            {
+                "v": _SIG_ENVELOPE_VERSION,
+                "alg": HYBRID_ALGO,
+                "sigs": {k: _b64encode(v) for k, v in sigs.items()},
+            }
         )
 
     raise ValueError(f"Unsupported algorithm for signing: {keypair.algorithm!r}")
@@ -268,7 +273,6 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
                 pub = _b64decode(keypair.public_key)
                 return liboqs_verify(alg, msg, sig, pub)
 
-            # Hybrid verify requires container (contract-locked)
             if hybrid_container_b64 is None:
                 return False
             container = try_decode_container(hybrid_container_b64)
@@ -297,7 +301,6 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
         except Exception:
             return False
 
-    # Stub verification (CI-safe)
     try:
         secret = _b64decode(keypair.secret_key)
 
