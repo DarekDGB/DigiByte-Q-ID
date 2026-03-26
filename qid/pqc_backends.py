@@ -117,8 +117,6 @@ def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
 
 
 def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
-    backend = selected_backend()
-
     # detect resolver behavior (patched vs real)
     try:
         oqs_alg = _oqs_alg_for(qid_alg)
@@ -165,14 +163,17 @@ def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
 
 
 def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: bytes) -> bool:
+    # explicit guard independent of patched resolver
+    if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO}:
+        raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
+
     try:
         oqs_alg = _oqs_alg_for(qid_alg)
     except ValueError:
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
     try:
-        if qid_alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
-            enforce_no_silent_fallback_for_alg(qid_alg)
+        enforce_no_silent_fallback_for_alg(qid_alg)
 
         mod = _import_oqs()
         _validate_oqs_module(mod)
@@ -189,19 +190,16 @@ def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: by
                 )
             )
 
-        if qid_alg == FALCON_ALGO:
-            from qid.pqc.pqc_falcon import verify_falcon
-            return bool(
-                verify_falcon(
-                    oqs=mod,
-                    msg=message,
-                    sig=signature,
-                    pub=public_key,
-                    oqs_alg=oqs_alg,
-                )
+        from qid.pqc.pqc_falcon import verify_falcon
+        return bool(
+            verify_falcon(
+                oqs=mod,
+                msg=message,
+                sig=signature,
+                pub=public_key,
+                oqs_alg=oqs_alg,
             )
-
-        return False
+        )
 
     except PQCBackendError:
         raise
