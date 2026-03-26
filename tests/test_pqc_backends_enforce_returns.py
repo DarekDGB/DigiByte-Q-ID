@@ -1,41 +1,37 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 import qid.pqc_backends as pb
 
 
-@pytest.fixture(autouse=True)
-def _reset_backend_state(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("QID_PQC_BACKEND", raising=False)
-    monkeypatch.setattr(pb, "oqs", pb._OQS_UNSET, raising=False)
-    yield
-    monkeypatch.delenv("QID_PQC_BACKEND", raising=False)
-    monkeypatch.setattr(pb, "oqs", pb._OQS_UNSET, raising=False)
+def test_enforce_no_silent_fallback_all_paths() -> None:
+    old_backend = os.environ.get("QID_PQC_BACKEND")
+    old_oqs = pb.oqs
 
+    try:
+        os.environ.pop("QID_PQC_BACKEND", None)
+        pb.oqs = pb._OQS_UNSET
 
-def test_enforce_no_silent_fallback_dev_algo_returns_immediately() -> None:
-    assert pb.enforce_no_silent_fallback_for_alg(pb.DEV_ALGO) is None
+        # if qid_alg == DEV_ALGO: return
+        assert pb.enforce_no_silent_fallback_for_alg(pb.DEV_ALGO) is None
 
+        # unsupported alg + backend None -> return
+        assert pb.enforce_no_silent_fallback_for_alg("not-supported") is None
 
-def test_enforce_no_silent_fallback_unsupported_alg_returns_when_backend_none(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("QID_PQC_BACKEND", raising=False)
-    assert pb.enforce_no_silent_fallback_for_alg("not-supported") is None
+        # supported alg + backend None -> return
+        assert pb.enforce_no_silent_fallback_for_alg(pb.ML_DSA_ALGO) is None
 
+        # unsupported alg + backend selected -> ValueError
+        os.environ["QID_PQC_BACKEND"] = "liboqs"
+        with pytest.raises(ValueError, match="Unsupported algorithm for liboqs"):
+            pb.enforce_no_silent_fallback_for_alg("not-supported")
 
-def test_enforce_no_silent_fallback_supported_alg_returns_when_backend_none(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("QID_PQC_BACKEND", raising=False)
-    assert pb.enforce_no_silent_fallback_for_alg(pb.ML_DSA_ALGO) is None
-
-
-def test_enforce_no_silent_fallback_unsupported_alg_raises_when_backend_selected(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
-
-    with pytest.raises(ValueError, match="Unsupported algorithm for liboqs"):
-        pb.enforce_no_silent_fallback_for_alg("not-supported")
+    finally:
+        if old_backend is None:
+            os.environ.pop("QID_PQC_BACKEND", None)
+        else:
+            os.environ["QID_PQC_BACKEND"] = old_backend
+        pb.oqs = old_oqs
