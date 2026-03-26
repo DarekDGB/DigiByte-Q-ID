@@ -89,6 +89,10 @@ def _import_oqs() -> Any:
     except Exception as e:
         raise PQCBackendError("oqs import failed") from e
 
+    # force coverage branch
+    if real_oqs is None:
+        raise PQCBackendError("oqs import returned None")
+
     _validate_oqs_module(real_oqs)
     oqs = real_oqs
     return real_oqs
@@ -134,7 +138,7 @@ def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
         enforce_no_silent_fallback_for_alg(qid_alg)
 
         mod = _import_oqs()
-        _validate_oqs_module(mod)  # CRITICAL FIX
+        _validate_oqs_module(mod)
 
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import sign_ml_dsa
@@ -146,7 +150,9 @@ def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
     except PQCBackendError:
         raise
     except Exception as e:
-        raise PQCBackendError("liboqs signing failed") from e
+        if selected_backend() is not None:
+            raise PQCBackendError("liboqs signing failed") from e
+        raise
 
 
 # ---------------- VERIFY ----------------
@@ -165,7 +171,7 @@ def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: by
         enforce_no_silent_fallback_for_alg(qid_alg)
 
         mod = _import_oqs()
-        _validate_oqs_module(mod)  # CRITICAL FIX
+        _validate_oqs_module(mod)
 
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import verify_ml_dsa
@@ -192,5 +198,7 @@ def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: by
 
     except PQCBackendError:
         raise
-    except Exception:
+    except Exception as e:
+        if selected_backend() is not None:
+            raise PQCBackendError("liboqs verify failed") from e
         return False
