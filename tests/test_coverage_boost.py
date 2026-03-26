@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-import builtins
 import types
+
 import pytest
 
 import qid.crypto as crypto
 import qid.pqc_backends as pb
 from qid.hybrid_key_container import (
+    _b64_std_decode,
     build_container,
     decode_container,
-    encode_container,
-    _b64_std_decode,
 )
-
-from qid.pqc.pqc_ml_dsa import sign_ml_dsa, verify_ml_dsa
 from qid.pqc.pqc_falcon import sign_falcon, verify_falcon
+from qid.pqc.pqc_ml_dsa import sign_ml_dsa, verify_ml_dsa
 
 
 def test_stub_verify_pqc_rejects_bad_prefix() -> None:
@@ -73,14 +71,9 @@ def test_pqc_backends_misc_error_paths(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_import_oqs_failure_path_is_deterministic(monkeypatch: pytest.MonkeyPatch) -> None:
-    real_import = builtins.__import__
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
+    monkeypatch.setattr(pb, "oqs", None, raising=False)
 
-    def fake_import(name, *args, **kwargs):
-        if name == "oqs":
-            raise ImportError("no oqs")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
     with pytest.raises(pb.PQCBackendError):
         pb._import_oqs()  # type: ignore[attr-defined]
 
