@@ -31,23 +31,15 @@ def test_backend_selected_fails_closed_until_wired() -> None:
         os.environ.pop("QID_PQC_BACKEND", None)
 
 
-def test_import_oqs_failure_path_is_covered(monkeypatch) -> None:
-    import builtins
-
-    real_import = builtins.__import__
-
-    def fake_import(name, *args, **kwargs):
-        if name == "oqs":
-            raise ImportError("no oqs")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+def test_import_oqs_failure_path_is_covered(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
+    monkeypatch.setattr(pb, "oqs", None, raising=False)
 
     with pytest.raises(pb.PQCBackendError):
         pb._import_oqs()  # type: ignore[attr-defined]
 
 
-def test_liboqs_not_wired_error_paths_are_covered(monkeypatch) -> None:
+def test_liboqs_not_wired_error_paths_are_covered(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pb, "_import_oqs", lambda: object())
 
     with pytest.raises(pb.PQCBackendError):
