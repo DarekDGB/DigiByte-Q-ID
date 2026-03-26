@@ -117,14 +117,18 @@ def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
 
 
 def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
-    try:
-        oqs_alg = _oqs_alg_for(qid_alg)
-    except ValueError:
-        raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
+    backend = selected_backend()
+
+    # FINAL FIX: explicit unsupported check independent of resolver
+    if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO}:
+        if backend is None:
+            raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
+        raise PQCBackendError("liboqs signing failed")
 
     try:
-        if qid_alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
-            enforce_no_silent_fallback_for_alg(qid_alg)
+        oqs_alg = _oqs_alg_for(qid_alg)
+
+        enforce_no_silent_fallback_for_alg(qid_alg)
 
         mod = _import_oqs()
         _validate_oqs_module(mod)
@@ -139,17 +143,14 @@ def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
                 oqs_alg=oqs_alg,
             )
 
-        if qid_alg == FALCON_ALGO:
-            from qid.pqc.pqc_falcon import sign_falcon
+        from qid.pqc.pqc_falcon import sign_falcon
 
-            return sign_falcon(
-                oqs=mod,
-                msg=message,
-                priv=secret_key,
-                oqs_alg=oqs_alg,
-            )
-
-        raise PQCBackendError("liboqs signing failed")
+        return sign_falcon(
+            oqs=mod,
+            msg=message,
+            priv=secret_key,
+            oqs_alg=oqs_alg,
+        )
 
     except PQCBackendError:
         raise
