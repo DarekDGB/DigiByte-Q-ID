@@ -117,15 +117,15 @@ def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
 
 
 def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
-    # Use resolver (important for patched tests)
+    # use resolver (tests may patch it)
     try:
         _oqs_alg_candidates_for(qid_alg)
     except ValueError:
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
-    enforce_no_silent_fallback_for_alg(qid_alg)
-
     try:
+        enforce_no_silent_fallback_for_alg(qid_alg)
+
         mod = _import_oqs()
         _validate_oqs_module(mod)
 
@@ -154,9 +154,9 @@ def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: by
     except ValueError:
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
-    enforce_no_silent_fallback_for_alg(qid_alg)
-
     try:
+        enforce_no_silent_fallback_for_alg(qid_alg)
+
         mod = _import_oqs()
         _validate_oqs_module(mod)
 
@@ -172,7 +172,5 @@ def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: by
 
     except PQCBackendError:
         raise
-
     except Exception:
-        # FAIL-CLOSED (critical for tests)
         return False
