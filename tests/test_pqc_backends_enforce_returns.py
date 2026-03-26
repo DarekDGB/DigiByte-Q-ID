@@ -14,24 +14,22 @@ def _reset_backend_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(pb, "oqs", pb._OQS_UNSET, raising=False)
 
 
+def test_enforce_no_silent_fallback_dev_algo_returns_immediately() -> None:
+    assert pb.enforce_no_silent_fallback_for_alg(pb.DEV_ALGO) is None
+
+
 def test_enforce_no_silent_fallback_unsupported_alg_returns_when_backend_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("QID_PQC_BACKEND", raising=False)
-
-    result = pb.enforce_no_silent_fallback_for_alg("not-supported")
-
-    assert result is None
+    assert pb.enforce_no_silent_fallback_for_alg("not-supported") is None
 
 
 def test_enforce_no_silent_fallback_supported_alg_returns_when_backend_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("QID_PQC_BACKEND", raising=False)
-
-    result = pb.enforce_no_silent_fallback_for_alg(pb.ML_DSA_ALGO)
-
-    assert result is None
+    assert pb.enforce_no_silent_fallback_for_alg(pb.ML_DSA_ALGO) is None
 
 
 def test_enforce_no_silent_fallback_unsupported_alg_raises_when_backend_selected(
