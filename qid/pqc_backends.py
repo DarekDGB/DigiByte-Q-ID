@@ -27,6 +27,8 @@ class _OQSUnset:
 
 
 _OQS_UNSET = _OQSUnset()
+
+# Tests may monkeypatch this
 oqs: Any = _OQS_UNSET
 
 
@@ -111,14 +113,13 @@ def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
     _validate_oqs_module(mod)
 
 
-def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
-    backend = selected_backend()
+# ---------------- SIGN ----------------
 
-    # special branch required by tests
+
+def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
+    # ✅ FIX: unsupported alg MUST always be ValueError (test contract)
     if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO}:
-        if backend is None:
-            raise PQCBackendError("liboqs signing failed (no backend)")
-        raise PQCBackendError("liboqs signing failed")
+        raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
     enforce_no_silent_fallback_for_alg(qid_alg)
 
@@ -139,6 +140,9 @@ def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
         raise
     except Exception as e:
         raise PQCBackendError("liboqs signing failed") from e
+
+
+# ---------------- VERIFY ----------------
 
 
 def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: bytes) -> bool:
@@ -162,5 +166,8 @@ def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: by
 
     except PQCBackendError:
         raise
-    except Exception:
+    except Exception as e:
+        # ✅ FIX: propagate as PQCBackendError when backend is selected
+        if selected_backend() is not None:
+            raise PQCBackendError("liboqs verify failed") from e
         return False
