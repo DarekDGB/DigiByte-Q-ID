@@ -36,6 +36,10 @@ from qid.canonical import canonical_json_bytes
 
 _SIG_ENVELOPE_VERSION = 1
 
+# Back-compat exports expected by tests / older imports from qid.crypto
+_LEGACY_HYBRID_ALGO = LEGACY_HYBRID_ALGO
+_ALLOWED_ALGOS = ALLOWED_ALGOS
+
 
 @dataclass(frozen=True)
 class QIDKeyPair:
@@ -135,7 +139,7 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
       So, when explicitly opted in (QID_PQC_TESTS=1 + QID_PQC_BACKEND=liboqs and oqs installed),
       we generate a real liboqs keypair for ML-DSA / Falcon.
     """
-    if alg not in ALLOWED_ALGOS:
+    if alg not in _ALLOWED_ALGOS:
         raise ValueError(f"Unknown Q-ID algorithm: {alg!r}")
 
     norm = _normalize_alg(alg)
@@ -181,7 +185,7 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
     from qid.hybrid_key_container import try_decode_container
 
     alg = _normalize_alg(keypair.algorithm)
-    if alg not in ALLOWED_ALGOS:
+    if alg not in _ALLOWED_ALGOS:
         raise ValueError(f"Unknown Q-ID algorithm: {keypair.algorithm!r}")
 
     msg = canonical_json_bytes(payload)
