@@ -278,21 +278,12 @@ def test_falcon_none_signature_and_verify_fail_closed() -> None:
 
 def test_pqc_backends_import_and_unsupported_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
-    monkeypatch.setattr(pb, "oqs", pb._OQS_UNSET, raising=False)
 
     class _ImportedOQS:
         Signature = _DummySig
 
-    import builtins
+    monkeypatch.setattr(pb, "oqs", _ImportedOQS, raising=False)
 
-    real_import = builtins.__import__
-
-    def fake_import(name, *args, **kwargs):
-        if name == "oqs":
-            return _ImportedOQS
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
     mod = pb._import_oqs()
     assert mod is _ImportedOQS
     assert pb.oqs is _ImportedOQS
