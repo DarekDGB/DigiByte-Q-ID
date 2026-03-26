@@ -11,8 +11,8 @@ import hashlib
 import json
 from typing import Any, Dict, Mapping, Optional, Union, cast
 
+from .algorithms import FALCON_ALGO, HYBRID_ALGO, ML_DSA_ALGO
 from .canonical import canonical_json_bytes
-from .crypto import FALCON_ALGO, HYBRID_ALGO, ML_DSA_ALGO
 
 
 _CONTAINER_VERSION = 1
@@ -132,20 +132,16 @@ def _validate_secret_key_types(d: Mapping[str, Any]) -> None:
 
 
 def _validate_container_dict(d: Mapping[str, Any]) -> None:
-    # v
     if d.get("v") != _CONTAINER_VERSION:
         raise ValueError("Invalid container version")
 
-    # alg
     if d.get("alg") != HYBRID_ALGO:
         raise ValueError("Invalid container alg")
 
-    # kid
     kid = d.get("kid")
     if not _is_non_empty_str(kid):
         raise ValueError("Invalid kid")
 
-    # components
     ml = d.get("ml_dsa")
     fa = d.get("falcon")
     if not isinstance(ml, Mapping) or not isinstance(fa, Mapping):
@@ -161,10 +157,8 @@ def _validate_container_dict(d: Mapping[str, Any]) -> None:
     if not _is_non_empty_str(fa.get("public_key")):
         raise ValueError("falcon.public_key missing")
 
-    # secret_key type checks (tests require encode_container to reject wrong types)
     _validate_secret_key_types(d)
 
-    # container_hash required and must match computed hash from PUBLIC VIEW ONLY
     ch = d.get("container_hash")
     if not _is_non_empty_str(ch):
         raise ValueError("container_hash missing")
