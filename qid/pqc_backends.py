@@ -117,26 +117,30 @@ def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
 
 
 def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
-    backend = selected_backend()
-
-    # IMPORTANT: behavior differs depending on backend presence (tests expect this)
-    if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO}:
-        if backend is None:
-            raise PQCBackendError("liboqs signing failed")
+    try:
+        oqs_alg = _oqs_alg_for(qid_alg)
+    except ValueError:
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
     try:
-        enforce_no_silent_fallback_for_alg(qid_alg)
+        # Only enforce for known public alg ids; patched tests may route other ids here.
+        if qid_alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
+            enforce_no_silent_fallback_for_alg(qid_alg)
 
         mod = _import_oqs()
         _validate_oqs_module(mod)
 
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import sign_ml_dsa
-            return sign_ml_dsa(message, secret_key)
 
-        from qid.pqc.pqc_falcon import sign_falcon
-        return sign_falcon(message, secret_key)
+            return sign_ml_dsa(oqs=mod, msg=message, priv=secret_key, oqs_alg=oqs_alg)
+
+        if qid_alg == FALCON_ALGO:
+            from qid.pqc.pqc_falcon import sign_falcon
+
+            return sign_falcon(oqs=mod, msg=message, priv=secret_key, oqs_alg=oqs_alg)
+
+        raise PQCBackendError("liboqs signing failed")
 
     except PQCBackendError:
         raise
@@ -148,25 +152,31 @@ def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
 
 
 def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: bytes) -> bool:
-    if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO}:
+    try:
+        oqs_alg = _oqs_alg_for(qid_alg)
+    except ValueError:
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
     try:
-        enforce_no_silent_fallback_for_alg(qid_alg)
+        if qid_alg in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
+            enforce_no_silent_fallback_for_alg(qid_alg)
 
         mod = _import_oqs()
         _validate_oqs_module(mod)
 
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import verify_ml_dsa
-            return bool(verify_ml_dsa(message, signature, public_key))
 
-        from qid.pqc.pqc_falcon import verify_falcon
-        return bool(verify_falcon(message, signature, public_key))
+            return bool(verify_ml_dsa(oqs=mod, msg=message, sig=signature, pub=public_key, oqs_alg=oqs_alg))
+
+        if qid_alg == FALCON_ALGO:
+            from qid.pqc.pqc_falcon import verify_falcon
+
+            return bool(verify_falcon(oqs=mod, msg=message, sig=signature, pub=public_key, oqs_alg=oqs_alg))
+
+        return False
 
     except PQCBackendError:
-        # MUST propagate (this fixes your failing test)
         raise
     except Exception:
-        # MUST fail-closed (return False)
         return False
