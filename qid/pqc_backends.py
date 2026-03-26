@@ -117,8 +117,10 @@ def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
 
 
 def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
-    # ✅ FIX: unsupported alg MUST always be ValueError (test contract)
-    if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO}:
+    # Use resolver (important for patched tests)
+    try:
+        _oqs_alg_candidates_for(qid_alg)
+    except ValueError:
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
     enforce_no_silent_fallback_for_alg(qid_alg)
@@ -129,12 +131,13 @@ def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
 
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import sign_ml_dsa
-
             return sign_ml_dsa(message, secret_key)
 
-        from qid.pqc.pqc_falcon import sign_falcon
+        if qid_alg == FALCON_ALGO:
+            from qid.pqc.pqc_falcon import sign_falcon
+            return sign_falcon(message, secret_key)
 
-        return sign_falcon(message, secret_key)
+        raise PQCBackendError("liboqs signing failed")
 
     except PQCBackendError:
         raise
@@ -146,7 +149,9 @@ def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
 
 
 def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: bytes) -> bool:
-    if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO}:
+    try:
+        _oqs_alg_candidates_for(qid_alg)
+    except ValueError:
         raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
 
     enforce_no_silent_fallback_for_alg(qid_alg)
@@ -157,17 +162,17 @@ def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: by
 
         if qid_alg == ML_DSA_ALGO:
             from qid.pqc.pqc_ml_dsa import verify_ml_dsa
-
             return bool(verify_ml_dsa(message, signature, public_key))
 
-        from qid.pqc.pqc_falcon import verify_falcon
+        if qid_alg == FALCON_ALGO:
+            from qid.pqc.pqc_falcon import verify_falcon
+            return bool(verify_falcon(message, signature, public_key))
 
-        return bool(verify_falcon(message, signature, public_key))
+        return False
 
     except PQCBackendError:
         raise
-    except Exception as e:
-        # ✅ FIX: propagate as PQCBackendError when backend is selected
-        if selected_backend() is not None:
-            raise PQCBackendError("liboqs verify failed") from e
+
+    except Exception:
+        # FAIL-CLOSED (critical for tests)
         return False
