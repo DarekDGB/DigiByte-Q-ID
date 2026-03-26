@@ -15,11 +15,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-
-# These constants are also imported by tests.
-ML_DSA_ALGO = "pqc-ml-dsa"
-FALCON_ALGO = "pqc-falcon"
-HYBRID_ALGO = "pqc-hybrid-ml-dsa-falcon"
+from qid.algorithms import FALCON_ALGO, HYBRID_ALGO, ML_DSA_ALGO
 
 
 class PQCBackendError(RuntimeError):
@@ -113,105 +109,104 @@ def _import_oqs() -> Any:
 
     backend = selected_backend()
 
-    # Explicit "unavailable" knob (tests may set oqs=None)
     if oqs is None:
         raise PQCBackendError("QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available.")
 
-    # If user selected liboqs AND tests (or embedder) injected a cached module-like
-    # object, use it and do not import the real optional dep.
     if backend == "liboqs" and oqs is not _OQS_UNSET:
         _validate_oqs_module(oqs)
         return oqs
 
-    try:
-        import oqs as mod  # type: ignore
-    except Exception:
-        raise PQCBackendError(
-            "QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available. "
-            'Install optional deps: pip install -e ".[dev,pqc]"'
-        ) from None
+    if backend != "liboqs":
+        raise PQCBackendError("No real PQC backend selected.")
 
-    _validate_oqs_module(mod)
-    oqs = mod
-    return mod
+    try:
+        import oqs as real_oqs
+    except Exception as e:
+        raise PQCBackendError("QID_PQC_BACKEND=liboqs selected but 'oqs' module is not available.") from e
+
+    _validate_oqs_module(real_oqs)
+    oqs = real_oqs
+    return real_oqs
+
+
+def _build_sig_ctx(oqs_mod: Any, qid_alg: str, *, secret_key: bytes | None = None) -> Any:
+    last_error: Exception | None = None
+
+    for oqs_alg in _oqs_alg_candidates_for(qid_alg):
+        try:
+            if secret_key is None:
+                return oqs_mod.Signature(oqs_alg)
+            return oqs_mod.Signature(oqs_alg, secret_key)
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise PQCBackendError(f"Unsupported liboqs signature algorithm for {qid_alg!r}") from last_error
 
 
 def enforce_no_silent_fallback_for_alg(qid_alg: str) -> None:
+    """
+    Enforce that when a backend is explicitly selected, supported PQC algs
+    are wired to that backend and must not silently downgrade.
+
+    Contract:
+    - For unsupported Q-ID algs, raise ValueError.
+    - For DEV / stub mode, caller should not invoke this helper.
+    - For HYBRID, require backend availability even though the actual signing/verifying
+      happens as two concrete ops (ML-DSA + Falcon).
+    """
+    if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
+        raise ValueError(f"Unsupported Q-ID algorithm for real PQC backend: {qid_alg!r}")
+
     backend = selected_backend()
     if backend is None:
-        return
-
+        raise PQCBackendError("No PQC backend selected.")
     if backend != "liboqs":
-        raise PQCBackendError(f"Unknown QID_PQC_BACKEND: {backend!r}")
+        raise PQCBackendError(f"Unsupported PQC backend: {backend!r}")
 
-    # Allow non-PQC algs even when backend selected (tests require dev algo no-op).
-    if qid_alg not in {ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO}:
-        return
-
-    mod = _import_oqs()
-    _validate_oqs_module(mod)
+    _import_oqs()
 
 
-def liboqs_sign(qid_alg: str, msg: bytes, priv: bytes) -> bytes:
-    # MUST raise ValueError for unsupported alg BEFORE importing oqs (tests rely on this).
-    candidates = _oqs_alg_candidates_for(qid_alg)
+def liboqs_sign(qid_alg: str, message: bytes, secret_key: bytes) -> bytes:
+    """
+    Sign using liboqs-selected backend.
 
-    mod = _import_oqs()
-    _validate_oqs_module(mod)
+    Raises:
+    - ValueError for unsupported algs
+    - PQCBackendError for backend wiring / availability problems
+    """
+    enforce_no_silent_fallback_for_alg(qid_alg)
 
-    for oqs_alg in candidates:
-        try:
-            if qid_alg == ML_DSA_ALGO:
-                from qid.pqc.pqc_ml_dsa import sign_ml_dsa
+    if qid_alg == HYBRID_ALGO:
+        raise ValueError("HYBRID signing must be performed as two concrete liboqs_sign calls")
 
-                return sign_ml_dsa(oqs=mod, msg=msg, priv=priv, oqs_alg=oqs_alg)
-
-            if qid_alg == FALCON_ALGO:
-                from qid.pqc.pqc_falcon import sign_falcon
-
-                return sign_falcon(oqs=mod, msg=msg, priv=priv, oqs_alg=oqs_alg)
-
-            raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
-
-        except TypeError:
-            # Deterministic error for API mismatches.
-            raise PQCBackendError("liboqs signing failed (Signature API mismatch)") from None
-        except PQCBackendError:
-            raise
-        except Exception:
-            # Try next candidate (e.g., ML-DSA-44 then Dilithium2).
-            continue
-
-    raise PQCBackendError("liboqs signing failed") from None
+    oqs_mod = _import_oqs()
+    try:
+        sig_ctx = _build_sig_ctx(oqs_mod, qid_alg, secret_key=secret_key)
+        return sig_ctx.sign(message)
+    except PQCBackendError:
+        raise
+    except Exception as e:
+        raise PQCBackendError(f"liboqs sign failed for algorithm {qid_alg!r}") from e
 
 
-def liboqs_verify(qid_alg: str, msg: bytes, sig: bytes, pub: bytes) -> bool:
-    # MUST raise ValueError for unsupported alg BEFORE importing oqs (tests rely on this).
-    candidates = _oqs_alg_candidates_for(qid_alg)
+def liboqs_verify(qid_alg: str, message: bytes, signature: bytes, public_key: bytes) -> bool:
+    """
+    Verify using liboqs-selected backend.
 
-    # Tests require PQCBackendError on invalid backend objects / wiring problems.
-    mod = _import_oqs()
-    _validate_oqs_module(mod)
+    Returns False on signature mismatch / verification failure.
+    Raises PQCBackendError only for backend wiring/availability problems.
+    """
+    enforce_no_silent_fallback_for_alg(qid_alg)
 
-    for oqs_alg in candidates:
-        try:
-            if qid_alg == ML_DSA_ALGO:
-                from qid.pqc.pqc_ml_dsa import verify_ml_dsa
+    if qid_alg == HYBRID_ALGO:
+        raise ValueError("HYBRID verification must be performed as two concrete liboqs_verify calls")
 
-                return bool(verify_ml_dsa(oqs=mod, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg))
-
-            if qid_alg == FALCON_ALGO:
-                from qid.pqc.pqc_falcon import verify_falcon
-
-                return bool(verify_falcon(oqs=mod, msg=msg, sig=sig, pub=pub, oqs_alg=oqs_alg))
-
-            raise ValueError(f"Unsupported algorithm for liboqs: {qid_alg!r}")
-
-        except (ValueError, PQCBackendError):
-            # Unsupported alg or backend wiring errors must propagate (tests rely on this).
-            raise
-        except Exception:
-            # Verification errors fail-closed; try next candidate if available.
-            continue
-
-    return False
+    oqs_mod = _import_oqs()
+    try:
+        sig_ctx = _build_sig_ctx(oqs_mod, qid_alg)
+        return bool(sig_ctx.verify(message, signature, public_key))
+    except PQCBackendError:
+        raise
+    except Exception:
+        return False
