@@ -78,47 +78,73 @@ def _envelope_decode(sig_b64: str) -> Dict[str, Any]:
 # ---------------- CI-safe stub crypto ----------------
 
 
-def _stub_sign_dev(msg: bytes, secret: bytes) -> bytes:
-    return hmac.new(secret, msg, hashlib.sha256).digest()
+def _stub_pub_verify_token(msg: bytes, public: bytes, label: str, digest_name: str) -> bytes:
+    h = hashlib.new(digest_name)
+    h.update(b"QID-STUB-V1|")
+    h.update(label.encode("ascii"))
+    h.update(b"|")
+    h.update(public)
+    h.update(b"|")
+    h.update(msg)
+    return h.digest()
 
 
-def _stub_verify_dev(msg: bytes, secret: bytes, sig: bytes) -> bool:
-    expected = hmac.new(secret, msg, hashlib.sha256).digest()
+def _stub_sign_dev(msg: bytes, secret: bytes, public: bytes) -> bytes:
+    # secret is touched so malformed stub key material still fails consistently,
+    # but the signature bytes are bound to public material for truthful verification.
+    hashlib.sha256(secret).digest()
+    return _stub_pub_verify_token(msg, public, DEV_ALGO, "sha256")
+
+
+def _stub_verify_dev(msg: bytes, public: bytes, sig: bytes) -> bool:
+    expected = _stub_pub_verify_token(msg, public, DEV_ALGO, "sha256")
     return hmac.compare_digest(expected, sig)
 
 
-def _stub_sign_pqc(msg: bytes, secret: bytes, alg: str) -> bytes:
-    core = hmac.new(secret, msg, hashlib.sha512).digest()
+def _stub_sign_pqc(msg: bytes, secret: bytes, public: bytes, alg: str) -> bytes:
+    hashlib.sha256(secret).digest()
+    core = _stub_pub_verify_token(msg, public, alg, "sha512")
     return alg.encode("ascii") + b":" + core
 
 
-def _stub_verify_pqc(msg: bytes, secret: bytes, sig: bytes, alg: str) -> bool:
+def _stub_verify_pqc(msg: bytes, public: bytes, sig: bytes, alg: str) -> bool:
     prefix = alg.encode("ascii") + b":"
     if not sig.startswith(prefix):
         return False
     core = sig[len(prefix) :]
-    expected = hmac.new(secret, msg, hashlib.sha512).digest()
+    expected = _stub_pub_verify_token(msg, public, alg, "sha512")
     return hmac.compare_digest(expected, core)
 
 
-def _stub_sign_hybrid(msg: bytes, secret: bytes) -> Dict[str, bytes]:
+def _split_hybrid_secret(secret: bytes) -> tuple[bytes, bytes]:
     if len(secret) < 64:
         raise ValueError("Hybrid secret key must be at least 64 bytes")
-    s1, s2 = secret[:32], secret[32:64]
+    return secret[:32], secret[32:64]
+
+
+def _split_hybrid_public(public: bytes) -> tuple[bytes, bytes]:
+    if len(public) < 64:
+        return hashlib.sha256(public + b"|ml").digest(), hashlib.sha256(public + b"|fa").digest()
+    return public[:32], public[32:64]
+
+
+def _stub_sign_hybrid(msg: bytes, secret: bytes, public: Optional[bytes] = None) -> Dict[str, bytes]:
+    s1, s2 = _split_hybrid_secret(secret)
+    if public is None:
+        public = hashlib.sha256(s1).digest() + hashlib.sha256(s2).digest()
+    pub_ml, pub_fa = _split_hybrid_public(public)
     return {
-        ML_DSA_ALGO: hmac.new(s1, msg, hashlib.sha256).digest(),
-        FALCON_ALGO: hmac.new(s2, msg, hashlib.sha512).digest(),
+        ML_DSA_ALGO: _stub_pub_verify_token(msg, pub_ml, ML_DSA_ALGO, "sha256"),
+        FALCON_ALGO: _stub_pub_verify_token(msg, pub_fa, FALCON_ALGO, "sha512"),
     }
 
 
-def _stub_verify_hybrid(msg: bytes, secret: bytes, sigs: Mapping[str, bytes]) -> bool:
-    if len(secret) < 64:
-        return False
+def _stub_verify_hybrid(msg: bytes, public: bytes, sigs: Mapping[str, bytes]) -> bool:
     if set(sigs.keys()) != {ML_DSA_ALGO, FALCON_ALGO}:
         return False
-    s1, s2 = secret[:32], secret[32:64]
-    exp1 = hmac.new(s1, msg, hashlib.sha256).digest()
-    exp2 = hmac.new(s2, msg, hashlib.sha512).digest()
+    pub_ml, pub_fa = _split_hybrid_public(public)
+    exp1 = _stub_pub_verify_token(msg, pub_ml, ML_DSA_ALGO, "sha256")
+    exp2 = _stub_pub_verify_token(msg, pub_fa, FALCON_ALGO, "sha512")
     return hmac.compare_digest(exp1, sigs[ML_DSA_ALGO]) and hmac.compare_digest(exp2, sigs[FALCON_ALGO])
 
 
@@ -171,12 +197,17 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
 
     if norm == DEV_ALGO:
         secret = secrets.token_bytes(32)
-    elif norm in (ML_DSA_ALGO, FALCON_ALGO, HYBRID_ALGO):
+        pub = hashlib.sha256(secret).digest()
+    elif norm in (ML_DSA_ALGO, FALCON_ALGO):
         secret = secrets.token_bytes(64)
+        pub = hashlib.sha256(secret).digest()
+    elif norm == HYBRID_ALGO:
+        secret = secrets.token_bytes(64)
+        s1, s2 = _split_hybrid_secret(secret)
+        pub = hashlib.sha256(s1).digest() + hashlib.sha256(s2).digest()
     else:
         raise ValueError(f"Unsupported Q-ID algorithm: {alg!r}")
 
-    pub = hashlib.sha256(secret).digest()
     return QIDKeyPair(algorithm=norm, secret_key=_b64encode(secret), public_key=_b64encode(pub))
 
 
@@ -228,17 +259,18 @@ def sign_payload(payload: Dict[str, Any], keypair: QIDKeyPair, *, hybrid_contain
         )
 
     secret = _b64decode(keypair.secret_key)
+    public = _b64decode(keypair.public_key)
 
     if alg == DEV_ALGO:
-        sig = _stub_sign_dev(msg, secret)
+        sig = _stub_sign_dev(msg, secret, public)
         return _envelope_encode({"v": _SIG_ENVELOPE_VERSION, "alg": DEV_ALGO, "sig": _b64encode(sig)})
 
     if alg in (ML_DSA_ALGO, FALCON_ALGO):
-        sig = _stub_sign_pqc(msg, secret, alg)
+        sig = _stub_sign_pqc(msg, secret, public, alg)
         return _envelope_encode({"v": _SIG_ENVELOPE_VERSION, "alg": alg, "sig": _b64encode(sig)})
 
     if alg == HYBRID_ALGO:
-        sigs = _stub_sign_hybrid(msg, secret)
+        sigs = _stub_sign_hybrid(msg, secret, public)
         return _envelope_encode(
             {
                 "v": _SIG_ENVELOPE_VERSION,
@@ -286,6 +318,8 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
             sigs = env.get("sigs")
             if not isinstance(sigs, dict):
                 return False
+            if set(sigs.keys()) != {ML_DSA_ALGO, FALCON_ALGO}:
+                return False
             s1 = sigs.get(ML_DSA_ALGO)
             s2 = sigs.get(FALCON_ALGO)
             if not isinstance(s1, str) or not isinstance(s2, str):
@@ -306,29 +340,33 @@ def verify_payload(payload: Dict[str, Any], signature: str, keypair: QIDKeyPair,
             return False
 
     try:
-        secret = _b64decode(keypair.secret_key)
+        public = _b64decode(keypair.public_key)
 
         if alg == DEV_ALGO:
             s = env.get("sig")
             if not isinstance(s, str):
                 return False
-            return _stub_verify_dev(msg, secret, _b64decode(s))
+            return _stub_verify_dev(msg, public, _b64decode(s))
 
         if alg in (ML_DSA_ALGO, FALCON_ALGO):
             s = env.get("sig")
             if not isinstance(s, str):
                 return False
-            return _stub_verify_pqc(msg, secret, _b64decode(s), alg)
+            return _stub_verify_pqc(msg, public, _b64decode(s), alg)
 
         if alg == HYBRID_ALGO:
             sigs = env.get("sigs")
             if not isinstance(sigs, dict):
                 return False
+            if set(sigs.keys()) != {ML_DSA_ALGO, FALCON_ALGO}:
+                return False
             try:
                 sig_map = {k: _b64decode(v) for k, v in sigs.items() if isinstance(v, str)}
             except Exception:
                 return False
-            return _stub_verify_hybrid(msg, secret, sig_map)
+            if set(sig_map.keys()) != {ML_DSA_ALGO, FALCON_ALGO}:
+                return False
+            return _stub_verify_hybrid(msg, public, sig_map)
 
         return False
     except Exception:
