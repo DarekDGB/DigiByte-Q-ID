@@ -172,28 +172,33 @@ def generate_keypair(alg: str = DEV_ALGO) -> QIDKeyPair:
 
     # Opt-in real PQC keygen for PQC optional workflow.
     if norm in (ML_DSA_ALGO, FALCON_ALGO):
-        try:
-            import os
-            import importlib.util
+        import os
+        import importlib.util
 
-            backend = os.getenv("QID_PQC_BACKEND", "").strip().lower()
-            pqc_tests = os.getenv("QID_PQC_TESTS", "").strip()
+        backend = os.getenv("QID_PQC_BACKEND", "").strip().lower()
+        pqc_tests = os.getenv("QID_PQC_TESTS", "").strip()
 
-            if backend == "liboqs" and pqc_tests == "1" and importlib.util.find_spec("oqs") is not None:
+        if backend == "liboqs" and pqc_tests == "1":
+            from qid.pqc_backends import PQCBackendError
+
+            if importlib.util.find_spec("oqs") is None:
+                raise PQCBackendError("QID_PQC_BACKEND=liboqs selected for keygen but oqs is not installed")
+
+            try:
                 from qid.pqc.keygen_liboqs import generate_falcon_keypair, generate_ml_dsa_keypair
 
                 if norm == ML_DSA_ALGO:
                     pub, sec = generate_ml_dsa_keypair("ML-DSA-44")
                 else:
                     pub, sec = generate_falcon_keypair("Falcon-512")
+            except Exception as e:
+                raise PQCBackendError("liboqs key generation failed") from e
 
-                return QIDKeyPair(
-                    algorithm=norm,
-                    secret_key=_b64encode(sec),
-                    public_key=_b64encode(pub),
-                )
-        except Exception:
-            pass
+            return QIDKeyPair(
+                algorithm=norm,
+                secret_key=_b64encode(sec),
+                public_key=_b64encode(pub),
+            )
 
     if norm == DEV_ALGO:
         secret = secrets.token_bytes(32)
