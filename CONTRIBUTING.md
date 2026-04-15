@@ -1,6 +1,6 @@
 # CONTRIBUTING
 
-## DigiByte Q-ID — v1.0.1
+## DigiByte Q-ID — v1.0.2
 
 ---
 
