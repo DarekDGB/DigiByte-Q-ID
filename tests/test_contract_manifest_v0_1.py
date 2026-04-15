@@ -24,7 +24,7 @@ def test_contract_manifest_v0_1_is_enforced() -> None:
     manifest = _load_manifest()
 
     assert manifest["version"] == "v0.1"
-    assert manifest["frozen_at_tag"] == "v0.1.2-ci-locked"
+    assert manifest["frozen_at_tag"] == "v1.0.2-contracts-locked"
 
     files = manifest["files"]
     assert isinstance(files, list)
@@ -57,3 +57,4 @@ def test_contract_manifest_v0_1_covers_minimum_core_contracts() -> None:
 
     assert "contracts/api_surface_v0_1.json" in covered
     assert "docs/CONTRACTS/INDEX.md" in covered
+    assert "docs/CONTRACTS/TEST_TIERS.md" in covered
