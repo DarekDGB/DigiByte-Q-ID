@@ -1,6 +1,6 @@
 {
   "version": "v0.1",
-  "frozen_at_tag": "v0.1.2-ci-locked",
+  "frozen_at_tag": "v1.0.2-contracts-locked",
   "files": [
     {
       "path": "contracts/api_surface_v0_1.json",
@@ -8,15 +8,15 @@
     },
     {
       "path": "docs/CONTRACTS/CI_AND_CONTRACTS.md",
-      "sha256": "0b245e7c91d00a5d694e3f7e242078aedf6f5a3e8c7daf96807f70226d1fab2e"
+      "sha256": "c98ea43df942d00d17ff6b15a71cb7b82bb195e85750119636e1d0af3ff90362"
     },
     {
       "path": "docs/CONTRACTS/INDEX.md",
-      "sha256": "ea0f4e7c8d5d6f023d386100cc9c4ba691767882d85cda8f45ea196f46d10454"
+      "sha256": "89c97f7e40691a52726850c1fba8ec0a310d04fb792545e0a66363036da34d3b"
     },
     {
       "path": "docs/CONTRACTS/LOCKED.md",
-      "sha256": "9f3c2b8ba94770ac410da5611f3ed16da023db72808e3df5146cbb80b1288097"
+      "sha256": "90e9576d0f36d1bb8d51796bdc0be2f1a9db11b4baf80ae87a74b2ac4548dccd"
     },
     {
       "path": "docs/CONTRACTS/PQC_MODEL.md",
@@ -25,6 +25,10 @@
     {
       "path": "docs/CONTRACTS/QID_SPEC_v0_1.md",
       "sha256": "525e4e8564043098249db773b3b502fcc3185bdd791905cf78ed681bca9b15df"
+    },
+    {
+      "path": "docs/CONTRACTS/TEST_TIERS.md",
+      "sha256": "231b33db3bbb23680c0113e4741946440de1ce5b9b7fcb85f7ab7e2ad86581dd"
     },
     {
       "path": "docs/CONTRACTS/THREAT_MODEL.md",
