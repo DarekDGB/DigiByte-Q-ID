@@ -33,7 +33,7 @@ def test_generate_keypair_optin_real_pqc_branch_via_fake_keygen(monkeypatch) -> 
     assert kp2.algorithm == c.FALCON_ALGO
 
 
-def test_generate_keypair_optin_branch_falls_back_on_exception(monkeypatch) -> None:
+def test_generate_keypair_optin_branch_fails_closed_on_exception(monkeypatch) -> None:
     monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
     monkeypatch.setenv("QID_PQC_TESTS", "1")
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: object() if name == "oqs" else None)
@@ -44,9 +44,23 @@ def test_generate_keypair_optin_branch_falls_back_on_exception(monkeypatch) -> N
     fake_mod = types.SimpleNamespace(generate_ml_dsa_keypair=boom, generate_falcon_keypair=boom)
     monkeypatch.setitem(sys.modules, "qid.pqc.keygen_liboqs", fake_mod)
 
-    kp = c.generate_keypair(c.ML_DSA_ALGO)
-    assert kp.algorithm == c.ML_DSA_ALGO
+    import pytest
 
+    with pytest.raises(pb.PQCBackendError, match="liboqs key generation failed"):
+        c.generate_keypair(c.ML_DSA_ALGO)
+
+
+
+
+def test_generate_keypair_optin_branch_fails_closed_when_oqs_missing(monkeypatch) -> None:
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
+    monkeypatch.setenv("QID_PQC_TESTS", "1")
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+
+    import pytest
+
+    with pytest.raises(pb.PQCBackendError, match="oqs is not installed"):
+        c.generate_keypair(c.ML_DSA_ALGO)
 
 def test_verify_payload_backend_branch_rejects_non_string_sig(monkeypatch) -> None:
     monkeypatch.setattr(pb, "selected_backend", lambda: "liboqs")
