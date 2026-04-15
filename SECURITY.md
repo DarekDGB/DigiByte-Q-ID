@@ -5,7 +5,7 @@ Copyright (c) 2025 DarekDGB
 
 # SECURITY POLICY
 
-## DigiByte Q-ID — v1.0.1
+## DigiByte Q-ID — v1.0.2
 
 ---
 
@@ -158,7 +158,7 @@ Please include:
 
 This policy applies to:
 
-- Q-ID v1.0.1
+- Q-ID v1.0.2
 - All subsequent hardening releases unless explicitly changed
 
 ---
