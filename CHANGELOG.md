@@ -6,6 +6,31 @@ This project adheres to semantic versioning.
 
 ------------------------------------------------------------------------
 
+## [1.0.2] - 2026-04-15
+
+### Added
+
+- Verification contract documentation (`docs/CONTRACTS/CONTRACT_QID_VERIFICATION.md`)
+- Verification contract invariant tests covering accepted signature shapes and hybrid strict-AND behavior
+- Explicit fail-closed tests for liboqs-only key generation requests
+
+### Changed
+
+- Aligned repository version truth to `v1.0.2` across package metadata and release surfaces
+- Removed placeholder package-surface language from `qid/__init__.py`
+- Stub verification now derives verification material from public material only
+
+### Security
+
+- Eliminated CI stub verification dependence on secret material
+- Explicit liboqs key-generation requests now fail closed instead of silently downgrading
+- Verification contract and backend fail-closed behavior are CI locked
+
+No API surface changes.  
+No protocol behavior changes.
+
+------------------------------------------------------------------------
+
 ## [1.0.1] - 2026-03-XX
 
 ### Added
@@ -71,7 +96,7 @@ No protocol behavior changes.
 
 ### Changed
 
-- CI coverage gate adjusted to â¥90% to account for optional liboqs-only execution paths
+- CI coverage gate adjusted to >=90% to account for optional liboqs-only execution paths
 - Default CI reflects stub-only execution environment
 
 ### Security
@@ -85,7 +110,7 @@ No protocol behavior changes.
 
 ### Changed
 
-- Coverage gate raised and enforced at â¥95%
+- Coverage gate raised and enforced at >=95%
 - README aligned strictly with code and test contracts
 - liboqs key generation paths fully covered
 
@@ -104,7 +129,7 @@ No protocol behavior changes.
 ### Added
 
 - API surface contract frozen at `contracts/api_surface_v0_1.json`
-- CI: pytest + coverage gate (â¥90%)
+- CI: pytest + coverage gate (>=90%)
 - CI-safe stub crypto with fail-closed PQC backend selection
 - Hybrid ML-DSA + Falcon container support
 
@@ -112,5 +137,5 @@ Purpose: Establish deterministic contract baseline.
 
 ------------------------------------------------------------------------
 
-© 2025 DarekDGB  
+Â© 2025 DarekDGB  
 MIT License
