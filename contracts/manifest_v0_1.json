@@ -11,8 +11,12 @@
       "sha256": "c98ea43df942d00d17ff6b15a71cb7b82bb195e85750119636e1d0af3ff90362"
     },
     {
+      "path": "docs/CONTRACTS/CONTRACT_QID_VERIFICATION.md",
+      "sha256": "74190ca6f216f52a64e2fbe2d037650e58729e2c64aa94432f7e73102798a9ed"
+    },
+    {
       "path": "docs/CONTRACTS/INDEX.md",
-      "sha256": "89c97f7e40691a52726850c1fba8ec0a310d04fb792545e0a66363036da34d3b"
+      "sha256": "acc34efea308ebb5fae900259b072db2a4d1dc941490a488dc8cf242d1bf7472"
     },
     {
       "path": "docs/CONTRACTS/LOCKED.md",
