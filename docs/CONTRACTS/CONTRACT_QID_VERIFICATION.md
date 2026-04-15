@@ -1,6 +1,6 @@
 # CONTRACT_QID_VERIFICATION
 
-Status: Draft for v1.0.2 hardening  
+Status: Locked for v1.0.2  
 Owner: DarekDGB  
 Scope: Signing and verification truth for DigiByte Q-ID  
 Compatibility target: Non-breaking hardening release  
@@ -296,7 +296,7 @@ If CI-safe stub verification semantics differ from true public-key verification 
 
 ### Invariant QID-VER-013
 
-Protocol truth is defined by envelope rules, canonical bytes, and fail-closed behavior â not by accidental stub shortcuts.
+Protocol truth is defined by envelope rules, canonical bytes, and fail-closed behavior Ã¢ÂÂ not by accidental stub shortcuts.
 
 ---
 
