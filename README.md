@@ -6,13 +6,13 @@ Copyright (c) 2025 DarekDGB
 
 ## Quantum-Ready Authentication Protocol with Signed Payloads & Optional PQC Backends
 
-### Stable Contract Baseline v1.0.1 · Hardening In Progress
+### Stable Contract Baseline v1.0.2 · Hardening Locked
 
 ------------------------------------------------------------------------
 
 ## 🟢 Release & Status
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue)
+![Version](https://img.shields.io/badge/version-1.0.2-blue)
 ![CI](https://img.shields.io/badge/CI-passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![PQC Optional](https://img.shields.io/badge/PQC--Optional-liboqs--supported-success)
@@ -78,8 +78,8 @@ providing:
 
 # 11️⃣ Versioning Truth
 
-- **Current version:** `v1.0.1`
-- **Coverage lock release:** `v1.0.1`
+- **Current version:** `v1.0.2`
+- **Coverage lock release:** `v1.0.2`
 - Hardening continues without breaking contracts
 
 ------------------------------------------------------------------------
