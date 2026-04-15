@@ -68,6 +68,10 @@ This directory represents the **contract boundary** of the system.
 - File: `qid_uri_scheme_v1.md`
 - Purpose: Defines the canonical `qid://` URI format and parsing rules.
 
+### Q-ID Verification Contract
+- File: `CONTRACT_QID_VERIFICATION.md`
+- Purpose: Defines canonical signing and verification bytes, accepted signature shapes, algorithm policy, and fail-closed hybrid verification rules.
+
 ### Test Tiers
 - File: `TEST_TIERS.md`
 - Purpose: Defines the deterministic release gate and the optional real PQC proof tier.
