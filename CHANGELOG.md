@@ -6,6 +6,37 @@ This project adheres to semantic versioning.
 
 ------------------------------------------------------------------------
 
+## [1.1.0] - 2026-05-07
+
+### Added
+
+- Guardian Wallet v3 auth request contract (`contracts/guardian_qid_auth_request_v1.json`)
+- Guardian Wallet v3 auth bridge module (`qid/integration/guardian_v3.py`)
+- strict schema-level validator for Guardian Wallet v3 auth requests
+- deterministic auth-request ID derivation for the Guardian Wallet v3 bridge
+- fail-closed regression tests for auth bridge request construction and validation
+- Guardian Wallet v3 auth bridge documentation
+- Q-ID auth bridge release plan
+- example roundtrip for Q-ID → Guardian Wallet v3 auth request building
+
+### Changed
+
+- aligned repository release surfaces to `v1.1.0`
+- preserved existing legacy Guardian event adapter while adding explicit Guardian Wallet v3 auth support
+- preserved Adamantine integration unchanged
+
+### Security
+
+- rejected unknown auth bridge signal keys fail-closed
+- rejected malformed optional auth fields fail-closed
+- enforced deterministic request shape for Guardian Wallet v3 auth mode
+- preserved strict responsibility boundary: Q-ID verifies facts, Guardian evaluates policy
+
+No breaking protocol changes.  
+No authority expansion.
+
+------------------------------------------------------------------------
+
 ## [1.0.2] - 2026-04-15
 
 ### Added
@@ -89,53 +120,3 @@ No protocol behavior changes.
 
 No API surface changes relative to v0.1.2-ci-locked.  
 No protocol behavior changes.
-
-------------------------------------------------------------------------
-
-## [0.1.2-ci-locked] - 2026-01-XX
-
-### Changed
-
-- CI coverage gate adjusted to >=90% to account for optional liboqs-only execution paths
-- Default CI reflects stub-only execution environment
-
-### Security
-
-- Real PQC paths fully exercised in optional liboqs workflow
-- No protocol or API changes
-
-------------------------------------------------------------------------
-
-## [0.1.1-ci-locked] - 2026-01-XX
-
-### Changed
-
-- Coverage gate raised and enforced at >=95%
-- README aligned strictly with code and test contracts
-- liboqs key generation paths fully covered
-
-### Security
-
-- PQC backend enforcement hardened (no silent fallback)
-- Hybrid ML-DSA + Falcon rules fully locked and tested
-
-No API surface changes.  
-No protocol behavior changes.
-
-------------------------------------------------------------------------
-
-## [0.1.0-ci-locked] - 2026-01-XX
-
-### Added
-
-- API surface contract frozen at `contracts/api_surface_v0_1.json`
-- CI: pytest + coverage gate (>=90%)
-- CI-safe stub crypto with fail-closed PQC backend selection
-- Hybrid ML-DSA + Falcon container support
-
-Purpose: Establish deterministic contract baseline.
-
-------------------------------------------------------------------------
-
-Â© 2025 DarekDGB  
-MIT License
