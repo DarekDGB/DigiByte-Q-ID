@@ -144,9 +144,13 @@ def build_guardian_v3_qid_auth_request(
     if nonce != req.get("nonce"):
         raise TypeError("response_payload.nonce mismatch vs login_uri nonce")
 
-    safe_signals = {} if extra_signals is None else dict(extra_signals)
-    if not isinstance(safe_signals, dict):
+    if extra_signals is None:
+        safe_signals = {}
+    elif not isinstance(extra_signals, dict):
         raise TypeError("extra_signals must be a dict when provided")
+    else:
+        safe_signals = dict(extra_signals)
+
     unknown_signal_keys = set(safe_signals.keys()) - _ALLOWED_SIGNAL_KEYS
     if unknown_signal_keys:
         raise TypeError("extra_signals contains unknown keys")
