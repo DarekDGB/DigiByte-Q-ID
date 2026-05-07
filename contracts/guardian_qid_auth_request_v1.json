@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "guardian_qid_auth_request_v1",
+  "title": "Guardian Q-ID Auth Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "component",
+    "mode",
+    "request_id",
+    "wallet_ctx",
+    "tx_ctx",
+    "auth_ctx",
+    "extra_signals"
+  ],
+  "properties": {
+    "contract_version": { "type": "integer", "const": 3 },
+    "component": { "type": "string", "const": "guardian_wallet" },
+    "mode": { "type": "string", "const": "qid_auth" },
+    "request_id": { "type": "string", "minLength": 1 },
+    "wallet_ctx": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 0
+    },
+    "tx_ctx": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 0
+    },
+    "auth_ctx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qid_verified",
+        "service_id",
+        "callback_url",
+        "nonce",
+        "address",
+        "pubkey"
+      ],
+      "properties": {
+        "qid_verified": { "type": "boolean" },
+        "binding_verified": { "type": "boolean" },
+        "service_id": { "type": "string", "minLength": 1 },
+        "callback_url": { "type": "string", "minLength": 1 },
+        "nonce": { "type": "string", "minLength": 1 },
+        "address": { "type": "string", "minLength": 1 },
+        "pubkey": { "type": "string", "minLength": 1 },
+        "key_id": { "type": "string", "minLength": 1 },
+        "require": { "type": "string", "enum": ["legacy", "dual-proof"] },
+        "issued_at": { "type": "integer" },
+        "expires_at": { "type": "integer" }
+      }
+    },
+    "extra_signals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "device_fingerprint": { "type": "string", "minLength": 1 },
+        "sentinel_status": { "type": "string", "minLength": 1 },
+        "geo_ip": { "type": "string", "minLength": 1 },
+        "session": { "type": "string", "minLength": 1 },
+        "trusted_device": { "type": "boolean" },
+        "device_mismatch": { "type": "boolean" }
+      }
+    }
+  }
+}
