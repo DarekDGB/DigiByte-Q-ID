@@ -1,6 +1,6 @@
 # CONTRIBUTING
 
-## DigiByte Q-ID — v1.0.2
+## DigiByte Q-ID — v1.1.0
 
 ---
 
@@ -41,6 +41,12 @@ If unsure → do not assume → ask.
 - ML-DSA AND Falcon must both verify
 - No OR logic allowed
 
+### 5. Guardian Wallet v3 Auth Bridge Boundary
+- Q-ID may build Guardian Wallet v3 auth requests
+- Q-ID must not absorb Guardian policy logic
+- auth must remain explicit `qid_auth` request context
+- no fake transaction semantics for auth flows
+
 ---
 
 ## 🧪 Testing Requirements
@@ -72,6 +78,7 @@ If coverage drops → PR rejected
 - Documentation improvements
 - Test improvements
 - Hardening (non-breaking)
+- additive integration surfaces with contract + tests
 
 ---
 
@@ -82,6 +89,7 @@ If coverage drops → PR rejected
 - Optional failure paths
 - Changing canonicalization rules
 - Reducing test coverage
+- mixing auth semantics into transaction semantics without explicit contract change
 
 ---
 
@@ -110,6 +118,7 @@ All PRs are reviewed with:
 - fail-closed enforcement
 - determinism verification
 - test coverage validation
+- integration-boundary discipline
 
 ---
 
