@@ -5,7 +5,7 @@ Copyright (c) 2025 DarekDGB
 
 # SECURITY POLICY
 
-## DigiByte Q-ID — v1.0.2
+## DigiByte Q-ID — v1.1.0
 
 ---
 
@@ -37,8 +37,6 @@ No recovery paths.
 No soft failures.  
 No partial success.
 
----
-
 ### 2. Deterministic Canonicalization
 
 All security-critical serialization uses:
@@ -53,8 +51,6 @@ This ensures:
 
 Any deviation is considered a security violation.
 
----
-
 ### 3. No Silent Fallback
 
 If a cryptographic backend is required:
@@ -64,8 +60,6 @@ If a cryptographic backend is required:
 - If unavailable → FAIL
 
 Never fallback silently to stub or alternative logic.
-
----
 
 ### 4. PQC Backend Rules
 
@@ -82,8 +76,6 @@ Rules:
 - Backend must be present
 - Missing backend → FAIL
 
----
-
 ### 5. Hybrid Signature Enforcement
 
 Hybrid mode = strict AND
@@ -94,13 +86,26 @@ Hybrid mode = strict AND
 
 No downgrade allowed.
 
----
-
 ### 6. Signature Integrity
 
 - Payload must be signed exactly as verified
 - No transformation allowed between sign and verify
 - Canonical bytes must match exactly
+
+### 7. Guardian Wallet v3 Auth Bridge
+
+Q-ID v1.1.0 adds a deterministic auth bridge for Guardian Wallet v3.
+
+Security boundary:
+- Q-ID verifies identity and binding facts
+- Guardian Wallet v3 evaluates policy
+- auth is not forced into transaction semantics
+
+Bridge requests must:
+- reject unknown keys fail-closed
+- reject malformed optional auth fields fail-closed
+- preserve deterministic request shape
+- preserve explicit responsibility boundaries
 
 ---
 
@@ -114,6 +119,7 @@ Q-ID is designed to resist:
 - downgrade attacks
 - partial verification bypass
 - backend misconfiguration
+- auth-bridge schema drift
 
 ---
 
@@ -125,6 +131,7 @@ Q-ID does NOT:
 - manage custody
 - auto-select cryptographic backends
 - perform implicit recovery
+- make Guardian policy decisions internally
 
 ---
 
@@ -137,6 +144,7 @@ Security is enforced through:
 - fail-closed path testing
 - hybrid verification tests
 - PQC backend enforcement tests
+- Guardian Wallet v3 auth bridge regression tests
 
 ---
 
@@ -158,8 +166,8 @@ Please include:
 
 This policy applies to:
 
-- Q-ID v1.0.2
-- All subsequent hardening releases unless explicitly changed
+- Q-ID v1.1.0
+- subsequent hardening releases unless explicitly changed
 
 ---
 
