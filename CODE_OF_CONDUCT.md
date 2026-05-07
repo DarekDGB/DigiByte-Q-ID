@@ -1,6 +1,6 @@
 # CODE OF CONDUCT
 
-## DigiByte Q-ID — v1.0.2
+## DigiByte Q-ID — v1.1.0
 
 ---
 
@@ -44,6 +44,7 @@ When contributing:
 - Prefer clarity over cleverness
 - Prefer explicit behavior over implicit behavior
 - Prefer safety over convenience
+- Respect contract boundaries between components
 
 ---
 
