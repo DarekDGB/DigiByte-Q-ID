@@ -45,6 +45,14 @@ def _sha256_hex(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
+def _is_sha256_hex(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(ch in "0123456789abcdef" for ch in value)
+    )
+
+
 def build_qid_login_uri(
     service: QIDServiceConfig,
     nonce: str,
@@ -74,6 +82,7 @@ def prepare_signed_login_response(
     *,
     now: int | None = None,
     ttl_seconds: int = 300,
+    context_hash: str | None = None,
     version: str = "1",
 ) -> Tuple[Dict[str, Any], str]:
     """
@@ -88,6 +97,8 @@ def prepare_signed_login_response(
     Optional Adamantine session binding:
     - If now is provided, issued_at/expires_at are embedded inside the signed payload.
     - expires_at = now + ttl_seconds
+    - If context_hash is provided, it is embedded inside the signed payload so
+      AdamantineOS can bind Q-ID evidence directly to the exact transaction context.
 
     Returns (response_payload, signature).
     """
@@ -120,6 +131,7 @@ def prepare_signed_login_response(
         key_id=key_id,
         issued_at=issued_at,
         expires_at=expires_at,
+        context_hash=context_hash,
         version=version,
     )
 
@@ -222,7 +234,7 @@ def build_adamantine_qid_evidence_v2(
       - v="2"
       - kind="qid_login_v2"
       - login_uri
-      - response_payload  (MUST include issued_at/expires_at inside signed payload)
+      - response_payload  (MUST include issued_at/expires_at/context_hash inside signed payload)
       - signature
       - subject           (derived from response_payload["address"])
       - proof_hash        (sha256(canonical(response_payload)))
@@ -231,6 +243,9 @@ def build_adamantine_qid_evidence_v2(
     Fail-closed rules:
     - requires subject + proof_hash
     - requires issued_at/expires_at as int and valid window ordering
+    - requires context_hash as a 64-character lowercase hex string inside
+      response_payload so the value is covered by both signature verification
+      and proof_hash
     """
     if not isinstance(login_uri, str) or not login_uri:
         raise TypeError("login_uri must be a non-empty string")
@@ -246,11 +261,14 @@ def build_adamantine_qid_evidence_v2(
     subject = response_payload.get("address")
     issued_at = response_payload.get("issued_at")
     expires_at = response_payload.get("expires_at")
+    context_hash = response_payload.get("context_hash")
 
     if not isinstance(subject, str) or not subject:
         raise TypeError("response_payload.address must be a non-empty string")
     if not isinstance(issued_at, int) or not isinstance(expires_at, int):
         raise TypeError("response_payload.issued_at/expires_at must be int")
+    if not _is_sha256_hex(context_hash):
+        raise TypeError("response_payload.context_hash must be a 64-character lowercase hex string")
     if issued_at <= 0 or expires_at <= 0:
         raise ValueError("response_payload.issued_at/expires_at must be positive")
     if issued_at >= expires_at:
@@ -330,7 +348,10 @@ def verify_adamantine_qid_evidence(
 
             issued_at = response_payload.get("issued_at")
             expires_at = response_payload.get("expires_at")
+            context_hash = response_payload.get("context_hash")
             if not isinstance(issued_at, int) or not isinstance(expires_at, int):
+                return False
+            if not _is_sha256_hex(context_hash):
                 return False
             if issued_at <= 0 or expires_at <= 0 or issued_at >= expires_at:
                 return False
