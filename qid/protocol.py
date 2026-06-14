@@ -147,6 +147,7 @@ def build_login_response_payload(
     *,
     issued_at: int | None = None,
     expires_at: int | None = None,
+    context_hash: str | None = None,
     version: str = "1",
 ) -> Dict[str, Any]:
     service_id = request_payload.get("service_id")
@@ -169,6 +170,18 @@ def build_login_response_payload(
     }
     if key_id is not None:
         payload["key_id"] = key_id
+
+    # Optional signed context binding (used by Adamantine evidence v2).
+    # When present, this value is inside the signed response payload so it
+    # cannot be edited independently of the signature/proof_hash.
+    if context_hash is not None:
+        if (
+            not isinstance(context_hash, str)
+            or len(context_hash) != 64
+            or any(ch not in "0123456789abcdef" for ch in context_hash)
+        ):
+            raise ValueError("context_hash must be a 64-character lowercase hex string when provided")
+        payload["context_hash"] = context_hash
 
     # Optional signed session window (used by Adamantine evidence v2).
     # Must be inside the signed payload so it cannot be edited by an attacker.
@@ -265,7 +278,7 @@ def server_verify_login_response(
             ):
                 return False
 
-            # ✅ Stronger long-term: PQC proof MUST pass for dual-proof.
+            # â Stronger long-term: PQC proof MUST pass for dual-proof.
             # If backend not selected or PQC fields missing/invalid -> False (fail-closed).
             if not _pqc_verify.verify_pqc_login(login_payload=response_payload, binding_env=binding_env):
                 return False
