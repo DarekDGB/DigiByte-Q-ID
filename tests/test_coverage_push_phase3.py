@@ -96,7 +96,7 @@ class _VerifyModule:
 def test_adamantine_v2_without_hybrid_container_covers_false_branch() -> None:
     evidence = build_adamantine_qid_evidence_v2(
         login_uri="qid://login?d=x",
-        response_payload={"address": "dgb1", "issued_at": 1, "expires_at": 2},
+        response_payload={"address": "dgb1", "issued_at": 1, "expires_at": 2, "context_hash": "a" * 64},
         signature="sig",
     )
     assert "hybrid_container_b64" not in evidence
