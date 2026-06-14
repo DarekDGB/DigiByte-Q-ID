@@ -25,6 +25,9 @@ from qid.integration.guardian import GuardianServiceConfig, build_guardian_qid_l
 from qid.uri_scheme import decode_uri, encode_uri
 
 
+CONTEXT_HASH = "a" * 64
+
+
 def _b64u(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).decode("ascii").rstrip("=")
 
@@ -73,6 +76,7 @@ def test_adamantine_v2_explicit_type_guards_and_kind_mismatch() -> None:
         keypair=kp,
         now=10,
         ttl_seconds=10,
+        context_hash=CONTEXT_HASH,
     )
     evidence = build_adamantine_qid_evidence_v2(
         login_uri=login_uri,
