@@ -18,6 +18,9 @@ from qid.protocol import (
 )
 
 
+CONTEXT_HASH = "a" * 64
+
+
 def _service() -> QIDServiceConfig:
     return QIDServiceConfig(
         service_id="example.com",
@@ -50,6 +53,22 @@ def test_prepare_signed_login_response_rejects_bad_now_and_ttl() -> None:
         )
 
 
+def test_prepare_signed_login_response_rejects_bad_context_hash() -> None:
+    service = _service()
+    login_uri = build_qid_login_uri(service, "nonce-context")
+    keypair = generate_dev_keypair()
+
+    with pytest.raises(ValueError, match="context_hash must be a 64-character lowercase hex string"):
+        prepare_signed_login_response(
+            service=service,
+            login_uri=login_uri,
+            address="dgb1qabc",
+            keypair=keypair,
+            now=100,
+            context_hash="not-a-sha256",
+        )
+
+
 def test_verify_signed_login_response_server_rejects_unparseable_uri() -> None:
     keypair = generate_dev_keypair()
 
@@ -74,6 +93,7 @@ def test_build_adamantine_qid_evidence_v2_happy_path_and_hybrid_container() -> N
         keypair=keypair,
         now=1000,
         ttl_seconds=60,
+        context_hash=CONTEXT_HASH,
     )
 
     evidence = build_adamantine_qid_evidence_v2(
@@ -86,6 +106,7 @@ def test_build_adamantine_qid_evidence_v2_happy_path_and_hybrid_container() -> N
     assert evidence["v"] == "2"
     assert evidence["kind"] == "qid_login_v2"
     assert evidence["subject"] == "dgb1qv2subject"
+    assert response_payload["context_hash"] == CONTEXT_HASH
     assert evidence["proof_hash"]
     assert evidence["hybrid_container_b64"] == "AAEC"
 
@@ -110,12 +131,17 @@ def test_build_adamantine_qid_evidence_v2_happy_path_and_hybrid_container() -> N
             "response_payload.issued_at/expires_at must be int",
         ),
         (
-            {"address": "dgb1", "issued_at": 0, "expires_at": 2},
+            {"address": "dgb1", "issued_at": 1, "expires_at": 2},
+            TypeError,
+            "response_payload.context_hash must be a 64-character lowercase hex string",
+        ),
+        (
+            {"address": "dgb1", "issued_at": 0, "expires_at": 2, "context_hash": CONTEXT_HASH},
             ValueError,
             "response_payload.issued_at/expires_at must be positive",
         ),
         (
-            {"address": "dgb1", "issued_at": 5, "expires_at": 5},
+            {"address": "dgb1", "issued_at": 5, "expires_at": 5, "context_hash": CONTEXT_HASH},
             ValueError,
             "response_payload.expires_at must be greater than issued_at",
         ),
@@ -157,7 +183,7 @@ def test_build_adamantine_qid_evidence_v2_validation_guards(
             "v": "2",
             "kind": "qid_login_v2",
             "login_uri": "qid://login?d=x",
-            "response_payload": {"address": "dgb1", "issued_at": 1, "expires_at": 2},
+            "response_payload": {"address": "dgb1", "issued_at": 1, "expires_at": 2, "context_hash": CONTEXT_HASH},
             "signature": "sig",
             "subject": "other",
             "proof_hash": "abc",
@@ -166,7 +192,7 @@ def test_build_adamantine_qid_evidence_v2_validation_guards(
             "v": "2",
             "kind": "qid_login_v2",
             "login_uri": "qid://login?d=x",
-            "response_payload": {"address": "dgb1", "issued_at": "1", "expires_at": 2},
+            "response_payload": {"address": "dgb1", "issued_at": "1", "expires_at": 2, "context_hash": CONTEXT_HASH},
             "signature": "sig",
             "subject": "dgb1",
             "proof_hash": "abc",
@@ -175,7 +201,7 @@ def test_build_adamantine_qid_evidence_v2_validation_guards(
             "v": "2",
             "kind": "qid_login_v2",
             "login_uri": "qid://login?d=x",
-            "response_payload": {"address": "dgb1", "issued_at": 5, "expires_at": 5},
+            "response_payload": {"address": "dgb1", "issued_at": 1, "expires_at": 2, "context_hash": "not-a-sha256"},
             "signature": "sig",
             "subject": "dgb1",
             "proof_hash": "abc",
@@ -184,7 +210,16 @@ def test_build_adamantine_qid_evidence_v2_validation_guards(
             "v": "2",
             "kind": "qid_login_v2",
             "login_uri": "qid://login?d=x",
-            "response_payload": {"address": "dgb1", "issued_at": 1, "expires_at": 2},
+            "response_payload": {"address": "dgb1", "issued_at": 5, "expires_at": 5, "context_hash": CONTEXT_HASH},
+            "signature": "sig",
+            "subject": "dgb1",
+            "proof_hash": "abc",
+        },
+        {
+            "v": "2",
+            "kind": "qid_login_v2",
+            "login_uri": "qid://login?d=x",
+            "response_payload": {"address": "dgb1", "issued_at": 1, "expires_at": 2, "context_hash": CONTEXT_HASH},
             "signature": "sig",
             "subject": "dgb1",
             "proof_hash": "wrong",
