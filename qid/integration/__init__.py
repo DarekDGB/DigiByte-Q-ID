@@ -1,11 +1,12 @@
 """
 Integration helpers for DigiByte Q-ID.
 
-This package will host helper functions for integrating Q-ID with:
-- Adamantine Wallet
+This package hosts helper functions for integrating Q-ID with:
+- AdamantineOS
 - Guardian rules engine
 - Other DigiByte tools and services
 """
 
-# Later we can export convenience functions here.
-__all__: list[str] = []
+from .adamantine import build_adamantineos_qid_verifier
+
+__all__ = ["build_adamantineos_qid_verifier"]
