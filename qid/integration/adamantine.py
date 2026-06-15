@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 from ..crypto import QIDKeyPair, sign_payload
 from ..protocol import (
@@ -372,3 +372,38 @@ def verify_adamantine_qid_evidence(
         )
     except Exception:
         return False
+
+
+def build_adamantineos_qid_verifier(
+    *,
+    service: QIDServiceConfig,
+    keypair: QIDKeyPair,
+) -> Callable[[Mapping[str, Any]], None]:
+    """Build the real AdamantineOS ``qid_verifier`` callable.
+
+    AdamantineOS expects a ``Callable[[Mapping[str, Any]], None]`` that raises
+    on invalid Q-ID evidence and returns ``None`` only when authenticity has
+    been verified. This helper adapts Q-ID's signed-login verifier to that
+    contract so integrators do not use a placeholder/no-op verifier.
+
+    The returned verifier checks the Adamantine evidence envelope, the original
+    login URI, service/callback binding, response payload, proof hash, context
+    hash, and the Q-ID signature via ``verify_adamantine_qid_evidence``.
+    """
+    if not isinstance(service, QIDServiceConfig):
+        raise TypeError("service must be QIDServiceConfig")
+    if keypair is None:
+        raise TypeError("keypair must be provided")
+
+    def _verifier(evidence: Mapping[str, Any]) -> None:
+        if not isinstance(evidence, Mapping):
+            raise TypeError("AdamantineOS Q-ID evidence must be a mapping")
+        evidence_dict = dict(evidence)
+        if not verify_adamantine_qid_evidence(
+            service=service,
+            evidence=evidence_dict,
+            keypair=keypair,
+        ):
+            raise ValueError("AdamantineOS Q-ID evidence failed signature/authenticity verification")
+
+    return _verifier
