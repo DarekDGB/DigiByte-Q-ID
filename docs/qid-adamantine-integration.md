@@ -136,6 +136,46 @@ Wallets must **not**:
 - retry with weaker crypto
 - ignore missing containers
 
+
+---
+
+## 6A. AdamantineOS `qid_verifier` adapter
+
+AdamantineOS does not hold Q-ID signing keys. It expects the runtime integrator to inject a verifier callable with this shape:
+
+```python
+Callable[[Mapping[str, Any]], None]
+```
+
+The callable MUST return only after the Q-ID evidence has been authenticated. It MUST raise on malformed, forged, tampered, or unverifiable evidence. A placeholder/no-op callable is not a verifier and must not be used in production.
+
+Use the Q-ID helper:
+
+```python
+from qid.integration.adamantine import build_adamantineos_qid_verifier
+
+qid_verifier = build_adamantineos_qid_verifier(
+    service=service_config,
+    keypair=server_or_expected_qid_keypair,
+)
+```
+
+Then inject that callable into AdamantineOS `orchestrator_v2` / `RuntimeHostV2`.
+
+Required tests for an integration:
+
+- valid Q-ID evidence v2 is accepted by the verifier
+- tampered signature is rejected
+- tampered signed response payload is rejected
+- AdamantineOS denies when the verifier raises
+
+This proves the T-1 boundary end-to-end: Q-ID authenticity is checked before AdamantineOS parses Q-ID evidence as a trusted session.
+
+## 6B. Shape-A evidence boundary
+
+Shape-A Adamantine session evidence is a legacy local-session shape. Its hash is integrity-only. It is not signature/authenticity proof.
+
+Shape-A MUST NOT be accepted directly from untrusted transport, UI input, bridge payloads, or network-facing APIs. External Q-ID integrations should use Q-ID evidence v2 plus the real `qid_verifier` callable above.
 ---
 
 ## 7. What this document is not
