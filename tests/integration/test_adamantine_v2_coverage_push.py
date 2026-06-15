@@ -6,6 +6,7 @@ from qid.crypto import DEV_ALGO, generate_dev_keypair, generate_keypair
 from qid.integration.adamantine import (
     QIDServiceConfig,
     build_adamantine_qid_evidence_v2,
+    build_adamantineos_qid_verifier,
     build_qid_login_uri,
     prepare_signed_login_response,
     verify_adamantine_qid_evidence,
@@ -290,3 +291,101 @@ def test_login_happy_path_executes_wrapper_lines() -> None:
     assert msg.payload["nonce"] == "n1"
     assert msg.payload["key_id"] == "kid-1"
     assert msg.payload["version"] == "7"
+
+
+def test_adamantineos_qid_verifier_accepts_real_signed_v2_evidence() -> None:
+    service = _service()
+    keypair = generate_dev_keypair()
+    login_uri = build_qid_login_uri(service, "nonce-adamantineos-real-verifier")
+
+    response_payload, signature = prepare_signed_login_response(
+        service=service,
+        login_uri=login_uri,
+        address="dgb1qrealverifier",
+        keypair=keypair,
+        now=2000,
+        ttl_seconds=60,
+        context_hash=CONTEXT_HASH,
+    )
+    evidence = build_adamantine_qid_evidence_v2(
+        login_uri=login_uri,
+        response_payload=response_payload,
+        signature=signature,
+    )
+
+    verifier = build_adamantineos_qid_verifier(service=service, keypair=keypair)
+
+    assert verifier(evidence) is None
+
+
+def test_adamantineos_qid_verifier_rejects_tampered_signature() -> None:
+    service = _service()
+    keypair = generate_dev_keypair()
+    login_uri = build_qid_login_uri(service, "nonce-adamantineos-tampered-signature")
+
+    response_payload, signature = prepare_signed_login_response(
+        service=service,
+        login_uri=login_uri,
+        address="dgb1qtamperedsignature",
+        keypair=keypair,
+        now=2000,
+        ttl_seconds=60,
+        context_hash=CONTEXT_HASH,
+    )
+    evidence = build_adamantine_qid_evidence_v2(
+        login_uri=login_uri,
+        response_payload=response_payload,
+        signature=signature,
+    )
+    evidence["signature"] = "tampered-signature"
+    verifier = build_adamantineos_qid_verifier(service=service, keypair=keypair)
+
+    with pytest.raises(ValueError, match="failed signature/authenticity verification"):
+        verifier(evidence)
+
+
+def test_adamantineos_qid_verifier_rejects_tampered_signed_payload() -> None:
+    service = _service()
+    keypair = generate_dev_keypair()
+    login_uri = build_qid_login_uri(service, "nonce-adamantineos-tampered-payload")
+
+    response_payload, signature = prepare_signed_login_response(
+        service=service,
+        login_uri=login_uri,
+        address="dgb1qoriginal",
+        keypair=keypair,
+        now=2000,
+        ttl_seconds=60,
+        context_hash=CONTEXT_HASH,
+    )
+    evidence = build_adamantine_qid_evidence_v2(
+        login_uri=login_uri,
+        response_payload=response_payload,
+        signature=signature,
+    )
+    evidence["response_payload"] = dict(response_payload, address="dgb1qattacker")
+    verifier = build_adamantineos_qid_verifier(service=service, keypair=keypair)
+
+    with pytest.raises(ValueError, match="failed signature/authenticity verification"):
+        verifier(evidence)
+
+
+def test_adamantineos_qid_verifier_rejects_bad_inputs() -> None:
+    service = _service()
+    keypair = generate_dev_keypair()
+
+    with pytest.raises(TypeError, match="service must be QIDServiceConfig"):
+        build_adamantineos_qid_verifier(service="not-service", keypair=keypair)  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="keypair must be provided"):
+        build_adamantineos_qid_verifier(service=service, keypair=None)  # type: ignore[arg-type]
+
+    verifier = build_adamantineos_qid_verifier(service=service, keypair=keypair)
+    with pytest.raises(TypeError, match="must be a mapping"):
+        verifier("not-evidence")  # type: ignore[arg-type]
+
+
+def test_adamantineos_qid_verifier_is_exported_from_integration_package() -> None:
+    from qid.integration import build_adamantineos_qid_verifier as exported
+
+    assert exported is build_adamantineos_qid_verifier
