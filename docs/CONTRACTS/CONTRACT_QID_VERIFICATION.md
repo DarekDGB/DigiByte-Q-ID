@@ -54,6 +54,20 @@ Reference implementation path:
 
 Every signing and verification path for structured payloads must use the single canonical JSON helper.
 
+### AdamantineOS proof-hash canonical profile
+
+Q-ID Adamantine evidence v2 uses the named AdamantineOS proof-hash profile for `response_payload` hashing. This profile is intentionally separate from the general Q-ID signing serializer because AdamantineOS expects byte-identical proof hashes at the integration boundary.
+
+The Q-ID Adamantine integration helper `qid.integration.adamantine._canon_json_bytes(...)` MUST use:
+
+- `sort_keys=True`
+- `separators=(",", ":")`
+- `ensure_ascii=True`
+- `allow_nan=False`
+- UTF-8 output bytes
+
+`NaN`, `Infinity`, and `-Infinity` are not valid Adamantine proof-hash inputs. They MUST fail before any proof hash is accepted.
+
 ---
 
 ## Signing bytes rule
@@ -138,7 +152,7 @@ Only envelope version `1` is accepted.
 
 Only the following top-level envelope shapes are valid.
 
-## Shape A â single-signature envelope
+## Shape A Ã¢ÂÂ single-signature envelope
 
 Used for:
 
@@ -166,7 +180,7 @@ Forbidden fields for this shape:
 
 - `sigs`
 
-## Shape B â hybrid-signature envelope
+## Shape B Ã¢ÂÂ hybrid-signature envelope
 
 Used for:
 
@@ -296,7 +310,7 @@ If CI-safe stub verification semantics differ from true public-key verification 
 
 ### Invariant QID-VER-013
 
-Protocol truth is defined by envelope rules, canonical bytes, and fail-closed behavior Ã¢ÂÂ not by accidental stub shortcuts.
+Protocol truth is defined by envelope rules, canonical bytes, and fail-closed behavior ÃÂ¢ÃÂÃÂ not by accidental stub shortcuts.
 
 ---
 
