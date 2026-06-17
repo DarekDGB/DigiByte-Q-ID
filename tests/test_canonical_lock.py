@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from qid.binding import compute_binding_id
 from qid.canonical import canonical_json_bytes
 from qid.crypto import generate_dev_keypair, sign_payload, verify_payload
 from qid.hybrid_key_container import compute_container_hash
+
+
+@pytest.mark.parametrize("bad_float", [float("nan"), float("inf"), float("-inf")])
+def test_canonical_json_bytes_rejects_non_finite_floats(bad_float: float) -> None:
+    with pytest.raises(ValueError):
+        canonical_json_bytes({"bad_float": bad_float})
 
 
 def test_canonical_json_bytes_is_deterministic_across_key_order() -> None:
@@ -35,7 +43,7 @@ def test_canonical_json_bytes_is_deterministic_across_key_order() -> None:
 
 
 def test_canonical_json_bytes_preserves_utf8_non_ascii() -> None:
-    payload = {"message": "Zażółć gęślą jaźń", "city": "Łódź", "emoji": "🔐"}
+    payload = {"message": "ZaÅ¼Ã³ÅÄ gÄÅlÄ jaÅºÅ", "city": "ÅÃ³dÅº", "emoji": "ð"}
 
     out = canonical_json_bytes(payload)
 
@@ -46,8 +54,8 @@ def test_canonical_json_bytes_preserves_utf8_non_ascii() -> None:
         ensure_ascii=False,
     ).encode("utf-8")
     assert b"\\u" not in out
-    assert "Zażółć gęślą jaźń".encode("utf-8") in out
-    assert "🔐".encode("utf-8") in out
+    assert "ZaÅ¼Ã³ÅÄ gÄÅlÄ jaÅºÅ".encode("utf-8") in out
+    assert "ð".encode("utf-8") in out
 
 
 def test_sign_and_verify_use_same_canonical_bytes_for_non_ascii_payload() -> None:
@@ -55,8 +63,8 @@ def test_sign_and_verify_use_same_canonical_bytes_for_non_ascii_payload() -> Non
     payload = {
         "domain": "example.com",
         "address": "DGB123",
-        "message": "Zażółć gęślą jaźń",
-        "emoji": "🔐",
+        "message": "ZaÅ¼Ã³ÅÄ gÄÅlÄ jaÅºÅ",
+        "emoji": "ð",
         "nested": {"z": 2, "a": 1},
     }
 
