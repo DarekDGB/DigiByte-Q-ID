@@ -2,9 +2,13 @@ from pathlib import Path
 
 
 def test_main_ci_locks_100_percent_coverage() -> None:
-    content = Path('.github/workflows/tests.yml').read_text(encoding='utf-8')
-    assert '--cov-fail-under=100' in content
-    assert 'name: tests' in content
+    workflow = Path('.github/workflows/tests.yml').read_text(encoding='utf-8')
+    pyproject = Path('pyproject.toml').read_text(encoding='utf-8')
+
+    assert 'name: tests' in workflow
+    assert 'python -m pytest' in workflow
+    assert '--cov=qid' not in workflow
+    assert '--cov=qid --cov-report=term-missing --cov-fail-under=100 -ra' in pyproject
 
 
 def test_optional_pqc_workflow_remains_explicit() -> None:
@@ -20,8 +24,8 @@ def test_contract_docs_describe_two_test_tiers() -> None:
     locked = Path('docs/CONTRACTS/LOCKED.md').read_text(encoding='utf-8')
     index = Path('docs/CONTRACTS/INDEX.md').read_text(encoding='utf-8')
 
-    assert 'Tier 1 — Main deterministic baseline' in ci_contract
-    assert 'Tier 2 — Optional real PQC backend proof' in ci_contract
+    assert 'Tier 1 â Main deterministic baseline' in ci_contract
+    assert 'Tier 2 â Optional real PQC backend proof' in ci_contract
     assert 'coverage gate `= 100%`' in ci_contract
     assert 'Tier 1 is the primary release gate.' in test_tiers
     assert 'Tier 2 is not a replacement for Tier 1.' in test_tiers
