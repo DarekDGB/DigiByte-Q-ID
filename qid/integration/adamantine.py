@@ -36,8 +36,9 @@ def _canon_json_bytes(obj: object) -> bytes:
     - sort_keys=True
     - separators without whitespace
     - ensure_ascii=True for stability across runtimes
+    - allow_nan=False to match adamantine-qid-canonical-json-v1 exactly
     """
-    s = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    s = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
     return s.encode("utf-8")
 
 
