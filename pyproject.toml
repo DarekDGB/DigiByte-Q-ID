@@ -24,7 +24,7 @@ pqc = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "--cov=qid --cov-report=term-missing --cov-fail-under=100 -ra"
 testpaths = ["tests"]
 
 [tool.coverage.run]
