@@ -29,6 +29,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
-      - name: Run tests (coverage = 100%)
+      - name: Run tests with committed coverage gate
         run: |
-          python -m pytest --cov=qid --cov-report=term-missing --cov-fail-under=100 -q
+          python -m pytest
