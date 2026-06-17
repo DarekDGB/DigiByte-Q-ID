@@ -19,6 +19,12 @@ def test_encode_decode_roundtrip_register() -> None:
     assert got == payload
 
 
+@pytest.mark.parametrize("bad_float", [float("nan"), float("inf"), float("-inf")])
+def test_encode_uri_rejects_non_finite_floats(bad_float: float) -> None:
+    with pytest.raises(ValueError):
+        encode_uri("login", {"bad_float": bad_float})
+
+
 def test_decode_rejects_wrong_prefix() -> None:
     with pytest.raises(ValueError):
         decode_uri("http://login?d=abc", expected_action="login")
