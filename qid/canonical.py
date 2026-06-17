@@ -11,6 +11,7 @@ Rules:
 - sort_keys=True
 - separators=(",", ":")
 - ensure_ascii=False
+- allow_nan=False
 """
 
 from __future__ import annotations
@@ -32,4 +33,5 @@ def canonical_json_bytes(obj: Any) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
+        allow_nan=False,
     ).encode("utf-8")
