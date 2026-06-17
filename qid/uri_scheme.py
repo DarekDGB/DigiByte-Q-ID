@@ -45,7 +45,12 @@ def encode_uri(action: str, payload: Dict[str, Any]) -> str:
     if not action or any(c.isspace() for c in action):
         raise ValueError("Invalid Q-ID action")
 
-    json_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    json_bytes = json.dumps(
+        payload,
+        separators=(",", ":"),
+        sort_keys=True,
+        allow_nan=False,
+    ).encode("utf-8")
     token = _b64url_encode(json_bytes)
     return f"{_QID_PREFIX}{action}?d={token}"
 
