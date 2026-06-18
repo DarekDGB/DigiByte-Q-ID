@@ -1,3 +1,5 @@
+import builtins
+
 import pytest
 
 import qid.pqc_backends as pb
@@ -38,4 +40,21 @@ def test_import_oqs_none_return(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(pb, "oqs", None, raising=False)
 
     with pytest.raises(pb.PQCBackendError):
+        pb._import_oqs()
+
+
+def test_import_oqs_wraps_real_import_exception(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("QID_PQC_BACKEND", "liboqs")
+    monkeypatch.setattr(pb, "oqs", pb._OQS_UNSET, raising=False)
+
+    real_import = builtins.__import__
+
+    def blocked_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "oqs":
+            raise RuntimeError("forced oqs import failure")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+    with pytest.raises(pb.PQCBackendError, match="oqs import failed"):
         pb._import_oqs()
