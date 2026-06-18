@@ -7,6 +7,10 @@
       "sha256": "a4309809a1707556677ec5903cf3ec610cfa28882a74221bb70222649d7a47c8"
     },
     {
+      "path": "contracts/adamantine_qid_evidence_v2.json",
+      "sha256": "2e57d3efb3413f7fa4ac5dcad2152b728c1dc99d47e8bbf7da9b63fdc711ab9e"
+    },
+    {
       "path": "docs/CONTRACTS/CI_AND_CONTRACTS.md",
       "sha256": "c98ea43df942d00d17ff6b15a71cb7b82bb195e85750119636e1d0af3ff90362"
     },
