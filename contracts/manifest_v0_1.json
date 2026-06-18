@@ -15,12 +15,16 @@
       "sha256": "c98ea43df942d00d17ff6b15a71cb7b82bb195e85750119636e1d0af3ff90362"
     },
     {
+      "path": "docs/CONTRACTS/CANONICAL_JSON_PROFILES.md",
+      "sha256": "c991c7001eccfb353fe202eb66b376bbfd36f985d1912c5aa6ab3eee7d0b34f1"
+    },
+    {
       "path": "docs/CONTRACTS/CONTRACT_QID_VERIFICATION.md",
       "sha256": "8f065067ce1e38bfd1733f056ac1ba60afae7da41ef1e3dcdc02b8a95e3ac0ec"
     },
     {
       "path": "docs/CONTRACTS/INDEX.md",
-      "sha256": "acc34efea308ebb5fae900259b072db2a4d1dc941490a488dc8cf242d1bf7472"
+      "sha256": "ac8c55f33e975acb430e415d4aa713983d229ae3c7c2bba15243f3ca0838083d"
     },
     {
       "path": "docs/CONTRACTS/LOCKED.md",
