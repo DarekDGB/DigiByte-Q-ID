@@ -84,6 +84,13 @@ If `protocol_messages_v1.md` exists, treat it as **informative only** and prefer
 - `login_payloads_v1.md`
 - `registration_payload_v1.md`
 
+
+### Canonical JSON Profiles
+
+- File: `CANONICAL_JSON_PROFILES.md`
+- Purpose: Defines the named canonical JSON profiles used by Q-ID and the Q-ID to AdamantineOS boundary.
+- Locks: `qid-canonical-json-v1` and `adamantine-qid-canonical-json-v1` profile settings so future serializer drift is visible.
+
 ---
 
 **Author:** DarekDGB  
