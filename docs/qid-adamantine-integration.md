@@ -173,6 +173,22 @@ This proves the T-1 boundary end-to-end: Q-ID authenticity is checked before Ada
 
 ## 6B. Shape-A evidence boundary
 
+
+## 6B. Canonical JSON boundary profile
+
+Q-ID uses the named `adamantine-qid-canonical-json-v1` profile for AdamantineOS proof hashes.
+
+The profile is defined in `qid/canonical_profiles.py` and documented in `docs/CONTRACTS/CANONICAL_JSON_PROFILES.md`.
+
+Locked settings:
+
+- `sort_keys=True`
+- `separators=(",", ":")`
+- `ensure_ascii=True`
+- `allow_nan=False`
+
+This profile is intentionally separate from the internal `qid-canonical-json-v1` profile, which preserves non-ASCII characters as UTF-8 bytes.
+
 Shape-A Adamantine session evidence is a legacy local-session shape. Its hash is integrity-only. It is not signature/authenticity proof.
 
 Shape-A MUST NOT be accepted directly from untrusted transport, UI input, bridge payloads, or network-facing APIs. External Q-ID integrations should use Q-ID evidence v2 plus the real `qid_verifier` callable above.
