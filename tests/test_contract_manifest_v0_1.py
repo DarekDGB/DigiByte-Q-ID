@@ -56,6 +56,7 @@ def test_contract_manifest_v0_1_covers_minimum_core_contracts() -> None:
     covered = {entry["path"] for entry in manifest["files"]}
 
     assert "contracts/api_surface_v0_1.json" in covered
+    assert "contracts/adamantine_qid_evidence_v2.json" in covered
     assert "docs/CONTRACTS/INDEX.md" in covered
     assert "docs/CONTRACTS/CONTRACT_QID_VERIFICATION.md" in covered
     assert "docs/CONTRACTS/TEST_TIERS.md" in covered
