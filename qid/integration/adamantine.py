@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
-import json
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
+from ..canonical_profiles import ADAMANTINE_QID_CANONICAL_JSON_V1, canonical_json_bytes_for_profile
 from ..crypto import QIDKeyPair, sign_payload
 from ..protocol import (
     build_login_request_payload,
@@ -32,14 +32,12 @@ def _canon_json_bytes(obj: object) -> bytes:
     """
     Deterministic canonical JSON bytes for hashing.
 
-    Rules:
-    - sort_keys=True
-    - separators without whitespace
-    - ensure_ascii=True for stability across runtimes
-    - allow_nan=False to match adamantine-qid-canonical-json-v1 exactly
+    Uses the named adamantine-qid-canonical-json-v1 profile from
+    qid.canonical_profiles. This profile is distinct from the internal
+    qid-canonical-json-v1 profile because the AdamantineOS boundary requires
+    ensure_ascii=True for cross-runtime proof-hash stability.
     """
-    s = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
-    return s.encode("utf-8")
+    return canonical_json_bytes_for_profile(obj, ADAMANTINE_QID_CANONICAL_JSON_V1)
 
 
 def _sha256_hex(b: bytes) -> str:
