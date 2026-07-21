@@ -20,7 +20,7 @@
     },
     {
       "path": "docs/CONTRACTS/CONTRACT_QID_VERIFICATION.md",
-      "sha256": "8f065067ce1e38bfd1733f056ac1ba60afae7da41ef1e3dcdc02b8a95e3ac0ec"
+      "sha256": "2471864d68246ee84c237d443584b4b1be3b14bcd1f792f71e66105a9072c755"
     },
     {
       "path": "docs/CONTRACTS/INDEX.md",
@@ -60,7 +60,7 @@
     },
     {
       "path": "docs/CONTRACTS/protocol_messages_v1.md",
-      "sha256": "b4bec2481819a6e16fbd022234c904a7622f7348502f74602052ab9e103f417b"
+      "sha256": "a36b8d3d92359cfee92add3af368589d9e793d28d64ad1b22cf024e90bdc4400"
     },
     {
       "path": "docs/CONTRACTS/qid_uri_scheme_v1.md",
