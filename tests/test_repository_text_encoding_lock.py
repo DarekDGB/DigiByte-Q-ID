@@ -112,13 +112,36 @@ ALLOWED_ATTRIBUTION_LINE_PATTERNS = (
 )
 
 
-def _repository_text_paths() -> list[Path]:
+def _is_runtime_liboqs_checkout_path(
+    relative: Path,
+    repository_root: Path,
+) -> bool:
+    if not relative.parts or relative.parts[0] != "liboqs":
+        return False
+
+    checkout = repository_root / "liboqs"
+    git_directory = checkout / ".git"
+    return (
+        checkout.is_dir()
+        and not checkout.is_symlink()
+        and git_directory.is_dir()
+        and not git_directory.is_symlink()
+    )
+
+
+def _repository_text_paths(repository_root: Path = REPO_ROOT) -> list[Path]:
+    runtime_liboqs_checkout = repository_root / "liboqs"
+    if runtime_liboqs_checkout.is_symlink():
+        raise ValueError("top-level liboqs path must not be a symlink")
+
     paths: list[Path] = []
-    for path in REPO_ROOT.rglob("*"):
+    for path in repository_root.rglob("*"):
         if not path.is_file():
             continue
-        relative = path.relative_to(REPO_ROOT)
+        relative = path.relative_to(repository_root)
         if IGNORED_PATH_PARTS.intersection(relative.parts):
+            continue
+        if _is_runtime_liboqs_checkout_path(relative, repository_root):
             continue
         if path.suffix not in TEXT_FILE_SUFFIXES and path.name not in TEXT_FILE_NAMES:
             continue
@@ -197,6 +220,61 @@ def test_repository_text_is_strict_utf8_and_transfer_safe() -> None:
 
         reasons = _encoding_damage_reasons(text)
         assert not reasons, f"encoding damage in {relative}: {sorted(reasons)}"
+
+
+def test_repository_scan_excludes_only_runtime_liboqs_checkout(
+    tmp_path: Path,
+) -> None:
+    relative_text_paths = {
+        "liboqs/LICENSE.txt",
+        "docs/liboqs/LICENSE.txt",
+        "tests/liboqs/LICENSE.txt",
+        "liboqs-not/LICENSE.txt",
+        "notes.txt",
+    }
+    for relative in relative_text_paths:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("text\n", encoding="utf-8")
+
+    def scanned_paths() -> set[str]:
+        return {
+            path.relative_to(tmp_path).as_posix()
+            for path in _repository_text_paths(tmp_path)
+        }
+
+    assert scanned_paths() == relative_text_paths
+
+    git_marker = tmp_path / "liboqs" / ".git"
+    git_marker.write_text("not a checkout directory\n", encoding="utf-8")
+    assert scanned_paths() == relative_text_paths
+
+    git_marker.unlink()
+    git_marker.mkdir()
+    assert scanned_paths() == relative_text_paths - {"liboqs/LICENSE.txt"}
+
+
+def test_runtime_liboqs_checkout_marker_rejects_symlinks(tmp_path: Path) -> None:
+    relative = Path("liboqs/LICENSE.txt")
+    checkout = tmp_path / "liboqs"
+    checkout_target = tmp_path / "checkout-target"
+    (checkout_target / ".git").mkdir(parents=True)
+    checkout.symlink_to(checkout_target, target_is_directory=True)
+    assert not _is_runtime_liboqs_checkout_path(relative, tmp_path)
+    with pytest.raises(ValueError, match="top-level liboqs path must not be a symlink"):
+        _repository_text_paths(tmp_path)
+
+    checkout.unlink()
+    checkout.mkdir()
+    (checkout / "LICENSE.txt").write_text("text\n", encoding="utf-8")
+    git_target = tmp_path / "git-target"
+    git_target.mkdir()
+    (checkout / ".git").symlink_to(git_target, target_is_directory=True)
+    assert not _is_runtime_liboqs_checkout_path(relative, tmp_path)
+    assert relative in {
+        path.relative_to(tmp_path)
+        for path in _repository_text_paths(tmp_path)
+    }
 
 
 @pytest.mark.parametrize(
