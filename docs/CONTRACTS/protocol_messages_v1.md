@@ -73,9 +73,9 @@ Required fields:
 ```
 
 ## Rejection Rules
-- Missing required field â reject
-- Unknown `type` â reject
-- Version mismatch â reject
+- Missing required field -> reject
+- Unknown `type` -> reject
+- Version mismatch -> reject
 
 ## Security Notes
 - No implicit defaults
