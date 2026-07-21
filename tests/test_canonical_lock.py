@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
@@ -8,6 +9,19 @@ from qid.binding import compute_binding_id
 from qid.canonical import canonical_json_bytes
 from qid.crypto import generate_dev_keypair, sign_payload, verify_payload
 from qid.hybrid_key_container import compute_container_hash
+
+
+POLISH_MESSAGE = "Za\u017c\u00f3\u0142\u0107 g\u0119\u015bl\u0105 ja\u017a\u0144"
+POLISH_CITY = "\u0141\u00f3d\u017a"
+LOCK_EMOJI = "\U0001f510"
+EXPECTED_NON_ASCII_CANONICAL = bytes.fromhex(
+    "7b2263697479223a22c581c3b364c5ba222c22656d6f6a69223a22f09f949022"
+    "2c226d657373616765223a225a61c5bcc3b3c582c4872067c499c59b6cc48520"
+    "6a61c5bac584227d"
+)
+EXPECTED_NON_ASCII_CANONICAL_SHA256 = (
+    "038ddc64c7b8ac202a61d0713d2d853123783f0b3f533f940be9a92a04d1fc07"
+)
 
 
 @pytest.mark.parametrize("bad_float", [float("nan"), float("inf"), float("-inf")])
@@ -43,19 +57,19 @@ def test_canonical_json_bytes_is_deterministic_across_key_order() -> None:
 
 
 def test_canonical_json_bytes_preserves_utf8_non_ascii() -> None:
-    payload = {"message": "ZaÅ¼Ã³ÅÄ gÄÅlÄ jaÅºÅ", "city": "ÅÃ³dÅº", "emoji": "ð"}
+    payload = {
+        "message": POLISH_MESSAGE,
+        "city": POLISH_CITY,
+        "emoji": LOCK_EMOJI,
+    }
 
     out = canonical_json_bytes(payload)
 
-    assert out == json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode("utf-8")
+    assert out == EXPECTED_NON_ASCII_CANONICAL
+    assert hashlib.sha256(out).hexdigest() == EXPECTED_NON_ASCII_CANONICAL_SHA256
     assert b"\\u" not in out
-    assert "ZaÅ¼Ã³ÅÄ gÄÅlÄ jaÅºÅ".encode("utf-8") in out
-    assert "ð".encode("utf-8") in out
+    assert POLISH_MESSAGE.encode("utf-8") in out
+    assert LOCK_EMOJI.encode("utf-8") in out
 
 
 def test_sign_and_verify_use_same_canonical_bytes_for_non_ascii_payload() -> None:
@@ -63,8 +77,8 @@ def test_sign_and_verify_use_same_canonical_bytes_for_non_ascii_payload() -> Non
     payload = {
         "domain": "example.com",
         "address": "DGB123",
-        "message": "ZaÅ¼Ã³ÅÄ gÄÅlÄ jaÅºÅ",
-        "emoji": "ð",
+        "message": POLISH_MESSAGE,
+        "emoji": LOCK_EMOJI,
         "nested": {"z": 2, "a": 1},
     }
 
