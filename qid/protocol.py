@@ -278,7 +278,7 @@ def server_verify_login_response(
             ):
                 return False
 
-            # â Stronger long-term: PQC proof MUST pass for dual-proof.
+            # Stronger long-term: PQC proof MUST pass for dual-proof.
             # If backend not selected or PQC fields missing/invalid -> False (fail-closed).
             if not _pqc_verify.verify_pqc_login(login_payload=response_payload, binding_env=binding_env):
                 return False
