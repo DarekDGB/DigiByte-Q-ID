@@ -152,7 +152,7 @@ Only envelope version `1` is accepted.
 
 Only the following top-level envelope shapes are valid.
 
-## Shape A Ã¢ÂÂ single-signature envelope
+## Shape A -- single-signature envelope
 
 Used for:
 
@@ -180,7 +180,7 @@ Forbidden fields for this shape:
 
 - `sigs`
 
-## Shape B Ã¢ÂÂ hybrid-signature envelope
+## Shape B -- hybrid-signature envelope
 
 Used for:
 
@@ -310,7 +310,7 @@ If CI-safe stub verification semantics differ from true public-key verification 
 
 ### Invariant QID-VER-013
 
-Protocol truth is defined by envelope rules, canonical bytes, and fail-closed behavior ÃÂ¢ÃÂÃÂ not by accidental stub shortcuts.
+Protocol truth is defined by envelope rules, canonical bytes, and fail-closed behavior -- not by accidental stub shortcuts.
 
 ---
 
