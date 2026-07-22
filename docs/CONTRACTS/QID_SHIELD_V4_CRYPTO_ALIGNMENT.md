@@ -1,83 +1,116 @@
-# Q-ID / Shield v4 Crypto Alignment
+# Q-ID / Shield v4 Crypto Compatibility Contract
 
 Author attribution: DarekDGB
 
 ## Status
 
-This document is a Q-ID-side alignment lock for future Shield v4 PQC integration.
+Compatibility profile: `qid-shield-v4-compatibility-v1`
 
-Baseline tag: `ecosystem-pre-v4-audit-lock`
+This document is the frozen Q-ID-side compatibility boundary for Shield v4.
+It is integrity-locked by
+`contracts/qid_shield_v4_compatibility_manifest_v1.json`.
 
-This is not a Shield v4 release. It does not add Shield signing code, Shield verification code, Shield key material, wallet authority, or DigiByte consensus changes.
+This contract changes no Q-ID runtime code, cryptographic behavior, public API,
+dependency, key material, or verifier policy. It does not add Shield signing or
+verification code to Q-ID.
 
-## Purpose
+## Purpose and Claim Boundary
 
-Q-ID already carries the ecosystem's PQC naming direction and fail-closed crypto model.
+Q-ID produces identity and authentication evidence.
 
-Shield v4 may align with that naming direction, but Q-ID keys, Q-ID login proofs, Q-ID identity attestations, Q-ID bindings, and Q-ID trust roles must not become Shield decision authority.
+Shield v4 produces cryptographically verifiable component-verdict and
+Orchestrator-receipt evidence. Shield evidence does not itself grant execution
+authority.
 
-Q-ID proves identity / authentication evidence.
+AdamantineOS remains the final fail-closed policy and execution boundary.
 
-Shield v4 proves Shield component verdict evidence and Shield Orchestrator receipt evidence.
+Q-ID and Shield v4 share accurate algorithm terminology and a fail-closed
+philosophy. They do not share key authority, trust registries, signing roles,
+canonicalization profiles, domain tags, or verifier policy.
 
-AdamantineOS remains the final execution boundary.
+## Q-ID Execution Modes and Algorithm Mapping
 
-## Non-Negotiable Boundary
+Q-ID's default execution mode is its deterministic CI-safe stub. The stub is a
+contract and behavior scaffold, not secure PQC.
 
-Q-ID does not make Shield decisions.
+Only explicit selection of `QID_PQC_BACKEND=liboqs` activates the real Q-ID PQC
+backend. In that explicitly selected path, the current runtime mapping is:
 
-Q-ID does not sign Shield component verdicts.
+| Q-ID identifier | Accurate meaning | Explicit liboqs mapping |
+|---|---|---|
+| `dev-hmac-sha256` | Deterministic development scaffold only | None |
+| `pqc-ml-dsa` | ML-DSA, formerly CRYSTALS-Dilithium | `ML-DSA-44`, with legacy backend label `Dilithium2` as a compatibility fallback |
+| `pqc-falcon` | Falcon-family signature evidence | `Falcon-512` |
+| `pqc-hybrid-ml-dsa-falcon` | Q-ID hybrid with strict AND semantics | `ML-DSA-44` and `Falcon-512` |
 
-Q-ID does not sign Shield Orchestrator receipts.
+ML-DSA and FN-DSA/Falcon are separate signature directions. FN-DSA is based on
+Falcon. Falcon must never be described as ML-DSA.
 
-Q-ID does not sign transactions.
+The legacy identifier `hybrid-dev-ml-dsa` is a Q-ID compatibility alias only.
+Shield v4 does not inherit it.
 
-Q-ID does not broadcast transactions.
+`qid/pqc/keygen_liboqs.py` recognizes additional parameter sets for Q-ID crypto
+agility, including `ML-DSA-65`, `ML-DSA-87`, and `Falcon-1024`. Recognition by
+a helper allowlist does not select those parameter sets for Q-ID's current
+runtime mapping and grants no Shield role, trust, policy, or authority.
 
-Q-ID does not change DigiByte consensus.
-
-Q-ID does not override AdamantineOS final policy.
-
-A Q-ID proof may be evidence inside a larger AdamantineOS decision, but it must not be interpreted as Shield v4 cryptographic verification.
-
-## Algorithm Naming Reference
-
-Q-ID currently defines this algorithm identifier direction:
-
-| Identifier | Accurate meaning |
-|---|---|
-| `dev-hmac-sha256` | Development / CI-safe deterministic scaffold only |
-| `pqc-ml-dsa` | ML-DSA, formerly CRYSTALS-Dilithium |
-| `pqc-falcon` | FN-DSA, based on Falcon |
-| `pqc-hybrid-ml-dsa-falcon` | ML-DSA plus FN-DSA/Falcon hybrid with strict AND semantics |
-
-ML-DSA and FN-DSA/Falcon are separate signature directions.
-
-FN-DSA/Falcon must never be described as ML-DSA.
-
-The legacy Q-ID identifier `hybrid-dev-ml-dsa` is a Q-ID compatibility concern only. Shield v4 must not silently inherit legacy Q-ID identifiers without explicit Shield-side compatibility rules.
-
-## Q-ID Files That Inform Naming
-
-The Q-ID source of truth for current algorithm naming and PQC behavior includes:
+The Q-ID implementation sources that define this boundary are:
 
 - `qid/algorithms.py`
 - `qid/crypto.py`
 - `qid/pqc_backends.py`
+- `qid/pqc/keygen_liboqs.py`
 - `qid/pqc_sign.py`
 - `qid/pqc_verify.py`
 - `docs/CONTRACTS/PQC_MODEL.md`
 - `docs/CONTRACTS/CANONICAL_JSON_PROFILES.md`
 
-These files may inform Shield v4 naming and failure philosophy.
+## Shield v4 Verifier Policy
 
-They do not define Shield v4 key roles, Shield v4 trust registry authority, Shield v4 canonicalization bytes, Shield v4 domain tags, or Shield v4 final verifier policy.
+Shield v4 uses this verifier-controlled policy:
 
-## Key Separation Lock
+```text
+policy version: policy.v1
+required: classical-ed25519 + ml-dsa
+optional: fn-dsa
+```
 
-Q-ID keys must not be reused as Shield v4 keys.
+The locked Shield profiles are:
 
-Shield v4 must define its own trust registry and key roles, including:
+| Policy role | Algorithm | Algorithm family | Standard profile | Mechanism |
+|---|---|---|---|---|
+| Required classical | `classical-ed25519` | `classical-ed25519` | `rfc8032-ed25519-v1` | Ed25519 |
+| Required PQC | `ml-dsa` | `pqc-ml-dsa` | `fips204-ml-dsa-65-v1` | ML-DSA-65 |
+| Optional PQC evidence | `fn-dsa` | `pqc-fn-dsa` | `fips206-draft-falcon1024-v1` | Falcon-1024 |
+
+The optional profile is accurately described as **draft FN-DSA/Falcon-1024
+evidence**. This contract does not claim final FIPS 206 standard proof.
+
+Optional FN-DSA evidence must never replace Ed25519 or ML-DSA, rescue a failed
+required signature, override a required verification failure, weaken verifier
+policy, bypass a denial, or become execution authority. Present but malformed
+or invalid optional evidence is fatal.
+
+## Parameter-Set and Policy Separation
+
+| Boundary | ML-DSA direction | Falcon / FN-DSA direction | Policy meaning |
+|---|---|---|---|
+| Q-ID explicit liboqs path | `pqc-ml-dsa` mapped to ML-DSA-44 | `pqc-falcon` mapped to Falcon-512 | Q-ID identity/authentication evidence |
+| Shield v4 | required `ml-dsa` using ML-DSA-65 | optional `fn-dsa` using Falcon-1024 | Shield verdict/receipt evidence under verifier-controlled policy |
+
+Q-ID `pqc-falcon` with Falcon-512 is not Shield `fn-dsa` with Falcon-1024.
+Q-ID `pqc-ml-dsa` with ML-DSA-44 is not Shield `ml-dsa` with ML-DSA-65.
+
+Parameter-set separation is not the trust boundary by itself. Key role, trust
+registry, domain separation, canonicalization profile, evidence schema, and
+verifier policy must all match independently and fail closed.
+
+## Key and Trust-Registry Separation
+
+Q-ID keys must not be reused as Shield v4 keys. Shield keys must not be reused
+as Q-ID identity keys.
+
+Shield v4 owns independent trust-registry roles:
 
 - `shield_component_adn`
 - `shield_component_dqsn`
@@ -86,132 +119,125 @@ Shield v4 must define its own trust registry and key roles, including:
 - `shield_component_sentinel_ai`
 - `shield_orchestrator`
 
-A Q-ID identity key must never be accepted as a Shield component key.
-
-A Q-ID identity key must never be accepted as a Shield Orchestrator key.
-
-A Shield key must never be accepted as a Q-ID identity key.
-
-Key reuse across Q-ID and Shield v4 would create role confusion and must fail closed.
-
-## Trust Role Separation
-
 | Domain | Key role | Evidence meaning |
 |---|---|---|
-| Q-ID | Identity / authentication key | User or device authentication evidence |
-| Shield component | Component decision key | Signed component verdict evidence |
-| Shield Orchestrator | Orchestrator aggregation key | Signed final Shield aggregation receipt evidence |
-| AdamantineOS | Final verifier / policy boundary | Final execution decision after all required evidence is verified |
+| Q-ID | Identity/authentication key | User or device authentication evidence |
+| Shield component | Component decision key | Signed component-verdict evidence |
+| Shield Orchestrator | Orchestrator aggregation key | Signed Shield receipt evidence |
+| AdamantineOS | Final verifier and policy boundary | Final fail-closed execution decision |
 
-A key valid in one row is not valid in another row.
+A key valid in one row is not valid in another row. A matching algorithm name,
+parameter set, field name, or public key does not transfer authority.
 
-A signature valid in one domain is not valid in another domain.
+## Canonicalization Separation
 
-A field name match is not authority.
+Q-ID uses its own named profiles:
 
-A matching public algorithm identifier is not authority.
+- `qid-canonical-json-v1`
+- `adamantine-qid-canonical-json-v1`
 
-## Canonicalization Boundary
-
-Q-ID canonicalization profiles are Q-ID contracts.
-
-Shield v4 canonicalization is expected to use its own frozen profile:
+Shield v4 uses its independently frozen profile:
 
 - `shield-v4-canon.v1`
 
-Q-ID canonical bytes must not be silently accepted as Shield v4 canonical bytes.
+Q-ID canonical bytes must not be accepted as Shield canonical bytes merely
+because the decoded values look equal. Any bridge must name and verify the
+expected profile explicitly.
 
-Shield v4 Known-Answer Test vectors must define Shield v4 canonical bytes independently.
+This V4.9-G contract does not claim canonical signature-bundle ordering. That
+is a separately controlled Shield step.
 
-Any future bridge must name the canonicalization profile explicitly and fail closed on mismatch.
+## Domain Separation
 
-## Domain Separation Boundary
+Q-ID login, authentication, binding, and identity-attestation signatures must
+never verify as Shield evidence or AdamantineOS final approval.
 
-Q-ID signatures and Shield v4 signatures must use separate domain separation.
+Shield v4 owns these exact implemented domain tags under `policy.v1`:
 
-A Q-ID login, authentication, binding, or identity-attestation signature must never verify as:
+- `DGB-SHIELD-V4-COMPONENT-VERDICT:shield.verdict.v2:policy.v1`
+- `DGB-SHIELD-V4-ORCH-RECEIPT:shield.receipt.v2:policy.v1`
 
-- a Shield component verdict signature
-- a Shield Orchestrator receipt signature
-- an AdamantineOS final approval
+Q-ID does not own, generate, or authorize those tags.
 
-Shield v4 planned domain tags are Shield-owned, not Q-ID-owned:
+## Hybrid and Failure Semantics
 
-- `DGB-SHIELD-V4-COMPONENT-VERDICT:<schema_version>:<policy_version>`
-- `DGB-SHIELD-V4-ORCH-RECEIPT:<schema_version>:<policy_version>`
+Q-ID's hybrid mode requires its ML-DSA and Falcon components to pass under
+strict AND semantics. That Q-ID behavior does not define Shield verifier
+policy.
 
-## Hybrid Semantics
+Shield v4 independently requires every verifier-required algorithm to pass.
+It rejects missing, duplicate, unknown, unsupported, malformed, mismatched, or
+invalid required evidence. Optional evidence cannot convert failure to success.
 
-Q-ID's hybrid model uses strict AND semantics.
+Embedded policy is evidence only. It cannot weaken verifier-controlled local
+policy.
 
-Shield v4 may align with the same philosophy:
+## Authority and Execution Boundary
 
-- all verifier-required algorithms must pass
-- no optional path may override a required-path failure
-- no first-valid-signature-wins behavior
-- duplicate algorithm entries must fail closed
-- unknown or unsupported algorithms must fail closed
+Q-ID does not:
 
-For Shield v4, the verifier-required policy is authoritative.
+- make Shield decisions;
+- sign Shield component verdicts;
+- sign Shield Orchestrator receipts;
+- verify Shield final authority;
+- grant Shield execution approval;
+- supply Shield trust-registry authority;
+- upgrade a Shield `DENY` to `ALLOW`;
+- override AdamantineOS policy;
+- sign transactions;
+- broadcast transactions; or
+- change DigiByte consensus.
 
-Any embedded policy is signed evidence only and must not weaken the verifier's required policy.
+Shield v4 does not sign transactions, broadcast transactions, change DigiByte
+consensus, or grant final execution authority. It produces cryptographically
+verifiable decision evidence only.
 
-## Q-ID Must Not Become Shield Authority
+Cryptographic verification proves evidence under the applicable profile and
+trusted key role. It does not create policy or execution authority.
 
-Q-ID must not expose or document any path where:
+## Runtime Dependency Boundary
 
-- Q-ID verifies Shield v4 final authority
-- Q-ID grants Shield v4 execution approval
-- Q-ID identity proof replaces Shield component signatures
-- Q-ID identity proof replaces Shield Orchestrator signatures
-- Q-ID keys are listed as Shield trust-registry keys
-- Q-ID metadata upgrades a Shield `DENY` to `ALLOW`
-- Q-ID output bypasses AdamantineOS final policy
+The Q-ID runtime has no Shield code dependency. No module under `qid/` imports
+Shield component, Shield Orchestrator, or Shield trust-registry code.
 
-If a future integration needs to pass Q-ID evidence into AdamantineOS, that evidence remains Q-ID evidence only.
+This compatibility contract is documentation and integrity metadata only. It
+does not create a runtime bridge.
 
-## Future Integration Rule
+## CI and Live-OQS Claim Boundary
 
-A future Shield v4 integration may reference Q-ID for:
+Q-ID standard CI proves its deterministic baseline and coverage gate.
 
-- algorithm naming consistency
-- fail-closed philosophy
-- no silent fallback philosophy
-- hybrid strict AND semantics
-- lessons learned from canonicalization and PQC backend selection
+The Q-ID optional-liboqs workflow is intended to exercise Q-ID real-backend
+compatibility when explicitly selected. A green run is Q-ID-only repository
+evidence, not guarded proof that required live nodes executed, because the
+workflow has no exact node-ID and zero-skip guard. It does not prove the
+guarded seven-repository Shield real-OQS boundary and does not authorize a
+Shield live-OQS claim.
 
-A future Shield v4 integration must not import from Q-ID:
+## Fail-Closed Integration Requirements
 
-- key authority
-- trust registry authority
-- final policy authority
-- transaction authority
-- wallet execution authority
-- Shield component role authority
-- Shield Orchestrator role authority
+Any integration using Q-ID and Shield evidence must fail closed on:
 
-## Fail-Closed Requirements
+- a Q-ID key presented for a Shield role;
+- a Shield key presented for a Q-ID role;
+- a Q-ID signature presented as Shield evidence;
+- a Shield signature presented as Q-ID evidence;
+- trust-registry, key-role, domain-tag, schema, profile, or policy mismatch;
+- missing required Shield signature paths;
+- optional evidence attempting to rescue a required failure;
+- weaker embedded policy than verifier-controlled policy; or
+- any attempt to treat either evidence family as final execution authority.
 
-Any future Q-ID / Shield bridge must fail closed if it sees:
+## Integrity and Change Control
 
-- a Q-ID key used for a Shield role
-- a Shield key used for a Q-ID role
-- a Q-ID signature presented as a Shield signature
-- a Shield signature presented as a Q-ID signature
-- mismatched canonicalization profile
-- missing Shield domain tag where Shield verification is required
-- legacy algorithm labels without explicit compatibility rules
-- weaker embedded policy than verifier-required policy
-- missing required hybrid algorithm path
-- optional FN-DSA/Falcon success while a required path fails
+`contracts/qid_shield_v4_compatibility_manifest_v1.json` hash-locks this
+document and `docs/CONTRACTS/INDEX.md`. The manifest does not hash itself.
 
-## V4.2 Exit Criteria
+The dedicated manifest proves deterministic file integrity only. It does not
+prove authorship, provenance, authentication, freshness, remote attestation,
+honest execution, or authority.
 
-This Q-ID-side alignment is complete only when:
-
-- Shield v4 can reuse naming philosophy without reusing Q-ID keys.
-- Q-ID identity/authentication authority remains separate from Shield decision authority.
-- ML-DSA and FN-DSA/Falcon wording is accurate.
-- Hybrid semantics remain strict AND.
-- No Q-ID document or implementation claims Shield final execution authority.
-- No crypto implementation is added by this V4.2 step.
+The historical `contracts/manifest_v0_1.json` remains a 17-path selective
+manifest frozen at `v1.0.2-contracts-locked`. This compatibility contract is
+not added to that historical inventory; only the already-covered index hash is
+refreshed after the index's final bytes are settled.
