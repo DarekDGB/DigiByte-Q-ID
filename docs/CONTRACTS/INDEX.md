@@ -93,5 +93,14 @@ If `protocol_messages_v1.md` exists, treat it as **informative only** and prefer
 
 ---
 
+### Shield v4 Compatibility Boundary
+
+- File: `QID_SHIELD_V4_CRYPTO_ALIGNMENT.md`
+- Integrity manifest: `contracts/qid_shield_v4_compatibility_manifest_v1.json`
+- Purpose: Locks the Q-ID and Shield v4 algorithm, parameter-set, key-role, trust-registry, canonicalization, domain, policy, and authority boundaries without adding a runtime dependency.
+- Claim boundary: Q-ID evidence remains identity/authentication evidence; Shield evidence remains decision evidence; AdamantineOS remains the final fail-closed policy and execution boundary.
+
+---
+
 **Author:** DarekDGB  
 **License:** MIT (2025)
