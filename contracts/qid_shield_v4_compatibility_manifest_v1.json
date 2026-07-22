@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hash_algorithm": "sha256",
+  "files": [
+    {
+      "path": "docs/CONTRACTS/QID_SHIELD_V4_CRYPTO_ALIGNMENT.md",
+      "sha256": "55078028534ebf2d8312b59a9d712053b2e97ebbc56da3b810ce0608f86efdee"
+    },
+    {
+      "path": "docs/CONTRACTS/INDEX.md",
+      "sha256": "0783664a29771c9520727e686580432d06b1ee90daa64c7283dcc25d2a0758b6"
+    }
+  ]
+}
