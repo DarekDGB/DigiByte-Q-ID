@@ -4,6 +4,25 @@ All notable changes to Q-ID will be documented in this file.
 
 This project adheres to semantic versioning.
 
+## [Unreleased] - V4.10-G1 compatibility release truth
+
+### Changed
+
+- Distinguish the existing v1.1.0 tag from the later working tree; retain
+  package 1.1.0 deliberately for this documentation/test-only step.
+- Expose the frozen Q-ID / Shield compatibility boundary in the README:
+  Q-ID identity evidence does not verify Shield cryptography or grant execution
+  authority; AdamantineOS remains the final fail-closed boundary.
+- Record named canonical JSON profiles, development-stub limits, statement and
+  branch coverage, expected native-test skips, and optional-workflow limits.
+- Correct the old v1.1.0 release plan's pending-tag wording and add a current
+  release-truth record plus regression tests.
+
+The V4.9 compatibility contract and both manifests remain byte-identical.
+No runtime, API, protocol, schema, key mapping, backend, dependency, workflow,
+package metadata, or third-party notice changes are made. This entry declares
+no new release and no guarded Q-ID live-OQS proof.
+
 ------------------------------------------------------------------------
 
 ## [1.1.0] - 2026-05-07
@@ -17,7 +36,7 @@ This project adheres to semantic versioning.
 - fail-closed regression tests for auth bridge request construction and validation
 - Guardian Wallet v3 auth bridge documentation
 - Q-ID auth bridge release plan
-- example roundtrip for Q-ID → Guardian Wallet v3 auth request building
+- example roundtrip for Q-ID -> Guardian Wallet v3 auth request building
 
 ### Changed
 
@@ -32,7 +51,7 @@ This project adheres to semantic versioning.
 - enforced deterministic request shape for Guardian Wallet v3 auth mode
 - preserved strict responsibility boundary: Q-ID verifies facts, Guardian evaluates policy
 
-No breaking protocol changes.  
+No breaking protocol changes.
 No authority expansion.
 
 ------------------------------------------------------------------------
@@ -57,7 +76,7 @@ No authority expansion.
 - Explicit liboqs key-generation requests now fail closed instead of silently downgrading
 - Verification contract and backend fail-closed behavior are CI locked
 
-No API surface changes.  
+No API surface changes.
 No protocol behavior changes.
 
 ------------------------------------------------------------------------
@@ -92,7 +111,7 @@ No protocol behavior changes.
 - Strengthened fail-closed guarantees through deterministic serialization
 - Added regression tests preventing future canonicalization drift
 
-No API surface changes.  
+No API surface changes.
 No protocol behavior changes.
 
 ------------------------------------------------------------------------
@@ -118,5 +137,5 @@ No protocol behavior changes.
 - Hybrid ML-DSA + Falcon container support fully retained
 - Optional liboqs backend remains supported and CI-verified
 
-No API surface changes relative to v0.1.2-ci-locked.  
+No API surface changes relative to v0.1.2-ci-locked.
 No protocol behavior changes.
